@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>桌面悬浮窗</title>
+    <link rel="stylesheet" href="./widget.css" />
+  </head>
+  <body>
+    <div class="widget-shell">
+      <div class="widget-card">
+        <div class="widget-dragbar" title="按住这里拖动悬浮图标" aria-label="拖动悬浮窗">
+          <span class="widget-dragdots">•••</span>
+        </div>
+
+        <button id="toggleMainButton" class="widget-button" type="button" title="显示或隐藏主窗口">
+          <span class="widget-halo" aria-hidden="true"></span>
+          <span class="widget-paw-print paw-print-left" aria-hidden="true"></span>
+          <span class="widget-paw-print paw-print-right" aria-hidden="true"></span>
+          <span id="widgetPuppy" class="widget-puppy" aria-hidden="true">
+            <span class="puppy-shadow"></span>
+            <span class="puppy-tail"></span>
+            <span class="puppy-body">
+              <span class="puppy-leg puppy-leg-back"></span>
+              <span class="puppy-leg puppy-leg-front"></span>
+              <span class="puppy-belly"></span>
+              <span class="puppy-spot puppy-spot-back"></span>
+              <span class="puppy-spot puppy-spot-body"></span>
+              <span class="puppy-collar"></span>
+            </span>
+            <span class="puppy-head">
+              <span class="puppy-ear puppy-ear-left"></span>
+              <span class="puppy-ear puppy-ear-right"></span>
+              <span class="puppy-face">
+                <span class="puppy-eye puppy-eye-left"></span>
+                <span class="puppy-eye puppy-eye-right"></span>
+                <span class="puppy-cheek puppy-cheek-left"></span>
+                <span class="puppy-cheek puppy-cheek-right"></span>
+                <span class="puppy-muzzle"></span>
+                <span class="puppy-nose"></span>
+                <span class="puppy-mouth"></span>
+              </span>
+            </span>
+          </span>
+        </button>
+
+        <button id="widgetMenuButton" class="widget-menu" type="button" title="更多操作" aria-label="更多操作">
+          <span class="widget-bone" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+
+    <script src="./widget.js"></script>
+  </body>
+</html>

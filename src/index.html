@@ -1,0 +1,417 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>&#29677;&#32423;&#21152;&#20943;&#20998;&#21161;&#25163;</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero-panel">
+        <div class="hero-title">
+          <p class="hero-tag">&#35838;&#22530;&#31454;&#36187;&#19982;&#29677;&#32423;&#31215;&#20998;</p>
+          <h1 id="boardTitle">&#26032;&#38754;&#26495; 1</h1>
+          <p class="hero-copy">&#36866;&#21512;&#25237;&#23631;&#23637;&#31034;&#12289;&#38543;&#26426;&#28857;&#21517;&#12289;&#23567;&#32452;&#31454;&#36187;&#12289;&#20498;&#35745;&#26102;&#21644;&#35838;&#22530;&#21152;&#20943;&#20998;&#31649;&#7406;&#12290;</p>
+        </div>
+
+        <div class="hero-controls">
+          <label class="hero-field">
+            <span>&#24403;&#21069;&#38754;&#26495;</span>
+            <select id="boardSelect" class="board-select"></select>
+          </label>
+          <div class="hero-pills">
+            <span id="studentSummaryPill" class="hero-pill">0 &#21517;&#23398;&#29983;</span>
+            <span id="stepSummaryPill" class="hero-pill hero-pill-accent">&#27493;&#36827; 1 &#20998;</span>
+          </div>
+        </div>
+      </header>
+
+      <section id="actionPanel" class="action-panel">
+        <div class="action-panel-head">
+          <div>
+            <p class="card-kicker">&#24555;&#25463;&#21151;&#33021;</p>
+            <h2>&#35838;&#22530;&#21151;&#33021;&#38754;&#26495;</h2>
+          </div>
+          <button id="toggleActionPanelBtn" class="mini-button" type="button">&#38544;&#34255;&#21151;&#33021;&#38754;&#26495;</button>
+        </div>
+        <div id="actionPanelContent" class="action-grid">
+        <button id="undoBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#8630;</span>
+          <span class="action-text">&#25764;&#38144;&#19978;&#19968;&#27493;</span>
+          <small id="undoMeta" class="action-meta">0 &#27493;</small>
+        </button>
+        <button id="redoBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#8631;</span>
+          <span class="action-text">&#24674;&#22797;&#19978;&#19968;&#27493;</span>
+          <small id="redoMeta" class="action-meta">0 &#27493;</small>
+        </button>
+        <button id="safetyRestoreBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#128735;</span>
+          <span class="action-text">&#24674;&#22797;&#20445;&#25252;&#28857;</span>
+          <small id="safetyMeta" class="action-meta">0 &#26465;</small>
+        </button>
+        <button id="presentationModeBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#128421;&#65039;</span>
+          <span class="action-text">&#22823;&#23631;&#23637;&#31034;</span>
+        </button>
+        <button id="createBoardBtn" class="action-button action-green" type="button">
+          <span class="action-icon">&#128218;</span>
+          <span class="action-text">&#21019;&#24314;&#26032;&#38754;&#26495;</span>
+        </button>
+        <button id="deleteBoardBtn" class="action-button action-red" type="button">
+          <span class="action-icon">&#10005;</span>
+          <span class="action-text">&#21024;&#38500;&#24403;&#21069;&#38754;&#26495;</span>
+        </button>
+        <button id="randomPickBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#127922;</span>
+          <span class="action-text">&#38543;&#26426;&#28857;&#21517;</span>
+        </button>
+        <button id="importBackupBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#128229;</span>
+          <span class="action-text">&#23548;&#20837;&#36824;&#21407;</span>
+        </button>
+        <button id="exportBackupBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#128228;</span>
+          <span class="action-text">&#23548;&#20986;&#22791;&#20221;</span>
+        </button>
+        <button id="stepValueBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#128290;</span>
+          <span class="action-text">&#20998;&#20540;&#27493;&#36827;</span>
+          <small id="stepValueButtonMeta" class="action-meta">&#24403;&#21069; 1 &#20998;</small>
+        </button>
+        <button id="ruleReasonBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#127873;</span>
+          <span class="action-text">&#35268;&#21017;&#21407;&#22240;</span>
+        </button>
+        <button id="clearBoardBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#128465;&#65039;</span>
+          <span class="action-text">&#28165;&#31354;&#24403;&#21069;&#38754;&#26495;</span>
+        </button>
+        <button id="resetBoardScoresBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#9678;</span>
+          <span class="action-text">&#20840;&#37096;&#28165;&#38646;&#65288;&#24403;&#21069;&#38754;&#26495;&#65289;</span>
+        </button>
+        <button id="deleteStudentsBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#129529;</span>
+          <span class="action-text">&#21024;&#38500;&#23398;&#29983;&#65288;&#24403;&#21069;&#38754;&#26495;&#65289;</span>
+        </button>
+        <button id="groupBonusBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#128101;</span>
+          <span class="action-text">&#23567;&#32452;&#20840;&#20307;&#21152;&#20998;&#65288;&#24403;&#21069;&#38754;&#26495;&#65289;</span>
+        </button>
+        <button id="groupedBaseBonusBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#127895;&#65039;</span>
+          <span class="action-text">&#23567;&#32452;&#22522;&#30784;&#21152;&#20998;&#65288;&#24403;&#21069;&#38754;&#26495;&#65289;</span>
+        </button>
+        <button id="exportSummaryBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#129518;</span>
+          <span class="action-text">Excel &#27719;&#24635;</span>
+        </button>
+        <button id="groupRankingBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#127942;</span>
+          <span class="action-text">&#23567;&#32452;&#25490;&#34892;&#27036;&#65288;&#24403;&#21069;&#38754;&#26495;&#65289;</span>
+        </button>
+        <button id="studentRankingBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#129351;</span>
+          <span class="action-text">&#23398;&#29983;&#25490;&#34892;&#27036;&#65288;&#24403;&#21069;&#38754;&#26495;&#65289;</span>
+        </button>
+        <button id="batchGroupingBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#128722;</span>
+          <span class="action-text">&#25209;&#37327;&#20998;&#32452;&#65288;&#24403;&#21069;&#38754;&#26495;&#65289;</span>
+        </button>
+        <button id="batchScoringBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#10004;</span>
+          <span class="action-text">&#25209;&#37327;&#21152;&#20998;&#65288;&#24403;&#21069;&#38754;&#26495;&#65289;</span>
+        </button>
+        <button id="batchAddBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#128203;</span>
+          <span class="action-text">&#25209;&#37327;&#28155;&#21152;&#65288;&#24403;&#21069;&#38754;&#26495;&#65289;</span>
+        </button>
+        <button id="addStudentQuickBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#128100;</span>
+          <span class="action-text">&#28155;&#21152;&#23398;&#29983;&#65288;&#24403;&#21069;&#38754;&#26495;&#65289;</span>
+        </button>
+        <button id="petHomeBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#128054;</span>
+          <span class="action-text">&#23456;&#29289;&#23478;&#22253;</span>
+        </button>
+        <button id="petShopBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#129658;</span>
+          <span class="action-text">&#23456;&#29289;&#21830;&#22478;</span>
+        </button>
+        <button id="shopBtn" class="action-button action-blue" type="button">
+          <span class="action-icon">&#128717;</span>
+          <span class="action-text">&#31215;&#20998;&#21830;&#22478;</span>
+        </button>
+        </div>
+      </section>
+
+      <main class="workspace">
+        <div class="column">
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <p class="card-kicker">&#24403;&#21069;&#38754;&#26495;&#23567;&#32452;</p>
+                <h2>&#23567;&#32452;&#27010;&#35272;</h2>
+              </div>
+              <div class="card-head-actions">
+                <span id="groupCountBadge" class="soft-badge">0 &#32452;</span>
+                <button id="manageGroupsBtn" class="mini-button" type="button">&#31649;&#29702;&#23567;&#32452;</button>
+              </div>
+            </div>
+            <div id="groupList" class="group-list"></div>
+            <p id="groupHint" class="board-hint">&#24403;&#21069;&#38754;&#26495;&#36824;&#27809;&#26377;&#23567;&#32452;&#65292;&#35831;&#36890;&#36807;&#8220;&#25209;&#37327;&#20998;&#32452;&#8221;&#26469;&#21019;&#24314;&#12290;</p>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <p class="card-kicker">&#23398;&#29983;&#21517;&#21333;</p>
+                <h2>&#23398;&#29983;&#19982;&#21246;&#36873;</h2>
+              </div>
+              <span id="checkedCountBadge" class="soft-badge">&#24050;&#21246;&#36873; 0 &#20154;</span>
+            </div>
+            <div class="toolbar-inline">
+              <input id="studentSearchInput" class="search-input" type="text" autocomplete="off" placeholder="&#25628;&#32034;&#22995;&#21517;&#12289;&#23398;&#21495;&#12289;&#24231;&#21495;&#25110;&#23567;&#32452;" />
+              <button id="clearStudentChecksBtn" class="mini-button" type="button">&#28165;&#31354;&#21246;&#36873;</button>
+            </div>
+            <div class="student-list-shell">
+              <div id="studentList" class="student-list"></div>
+            </div>
+          </section>
+        </div>
+
+        <div class="column">
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <p class="card-kicker">&#24403;&#21069;&#23398;&#29983;</p>
+                <h2>&#21152;&#20943;&#20998;&#25805;&#20316;</h2>
+              </div>
+              <button id="focusRuleBtn" class="mini-button" type="button">&#32534;&#36753;&#35268;&#21017;</button>
+            </div>
+
+            <div id="selectedStudentCard" class="selected-student empty-state"></div>
+
+            <div class="rules-grid">
+              <section class="rule-box plus-box">
+                <div class="rule-head">
+                  <p class="card-kicker">&#21152;&#20998;&#21407;&#22240;</p>
+                  <h3>&#27491;&#21521;&#22870;&#21169;</h3>
+                </div>
+                <div id="plusTemplateList" class="template-list"></div>
+              </section>
+
+              <section class="rule-box minus-box">
+                <div class="rule-head">
+                  <p class="card-kicker">&#20943;&#20998;&#21407;&#22240;</p>
+                  <h3>&#35838;&#22530;&#25552;&#37266;</h3>
+                </div>
+                <div id="minusTemplateList" class="template-list"></div>
+              </section>
+            </div>
+
+            <form id="quickAdjustForm" class="quick-form">
+              <select id="quickAdjustType">
+                <option value="plus">&#21152;&#20998;</option>
+                <option value="minus">&#20943;&#20998;</option>
+              </select>
+              <input id="quickAdjustLabel" type="text" maxlength="30" autocomplete="off" placeholder="&#39033;&#30446;&#21517;&#31216;&#65292;&#20363;&#22914;&#65306;&#35838;&#22530;&#34920;&#29616;" list="reasonSuggestions" />
+              <input id="quickAdjustValue" type="number" min="1" max="999" value="1" />
+              <input id="quickAdjustNote" type="text" maxlength="40" autocomplete="off" placeholder="&#22791;&#27880;&#65288;&#21487;&#36873;&#65289;" />
+              <button class="action-submit" type="submit">&#24212;&#29992;&#21040;&#24403;&#21069;&#23398;&#29983;</button>
+              <div class="quick-score-strip">
+                <button class="quick-score-chip is-plus" type="button" data-action="quick-adjust-direct" data-delta="1">+1</button>
+                <button class="quick-score-chip is-plus" type="button" data-action="quick-adjust-direct" data-delta="2">+2</button>
+                <button class="quick-score-chip is-plus" type="button" data-action="quick-adjust-direct" data-delta="5">+5</button>
+                <button class="quick-score-chip is-plus" type="button" data-action="quick-adjust-direct" data-delta="10">+10</button>
+                <button class="quick-score-chip is-minus" type="button" data-action="quick-adjust-direct" data-delta="-1">-1</button>
+                <button class="quick-score-chip is-minus" type="button" data-action="quick-adjust-direct" data-delta="-2">-2</button>
+                <button class="quick-score-chip is-minus" type="button" data-action="quick-adjust-direct" data-delta="-5">-5</button>
+                <button class="quick-score-chip is-minus" type="button" data-action="quick-adjust-direct" data-delta="-10">-10</button>
+              </div>
+            </form>
+            <datalist id="reasonSuggestions"></datalist>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <p class="card-kicker">&#24403;&#21069;&#23398;&#29983;</p>
+                <h2>&#24471;&#20998;&#35760;&#24405;</h2>
+              </div>
+              <button id="clearHistoryBtn" class="mini-button" type="button">&#28165;&#31354;&#24403;&#21069;&#23398;&#29983;&#35760;&#24405;</button>
+            </div>
+            <div class="panel-shell panel-shell-history">
+              <div id="historyList" class="history-list"></div>
+            </div>
+          </section>
+
+          <section class="card card-ranking">
+            <div class="card-head">
+              <div>
+                <p class="card-kicker">&#25490;&#34892;&#27036;&#39044;&#35272;</p>
+                <h2>&#23567;&#32452;&#19982;&#23398;&#29983;</h2>
+              </div>
+              <button id="rankingFilterBtn" class="mini-button" type="button">&#20165;&#21040;&#22330;</button>
+            </div>
+            <div class="ranking-columns ranking-columns-wide">
+              <section class="ranking-section">
+                <h3 class="ranking-title">&#23567;&#32452;&#25490;&#34892;&#27036;</h3>
+                <div class="panel-shell ranking-shell">
+                  <div id="groupRankingList" class="ranking-list"></div>
+                </div>
+              </section>
+              <section class="ranking-section">
+                <h3 class="ranking-title">&#23398;&#29983;&#25490;&#34892;&#27036;</h3>
+                <div class="panel-shell ranking-shell">
+                  <div id="studentRankingList" class="ranking-list"></div>
+                </div>
+              </section>
+            </div>
+          </section>
+        </div>
+
+        <aside class="column sidebar">
+          <section class="card side-card">
+            <div class="card-head">
+              <div>
+                <p class="card-kicker">&#24403;&#21069;&#38754;&#26495;&#25968;&#25454;</p>
+                <h2>&#35838;&#22530;&#27010;&#35272;</h2>
+              </div>
+            </div>
+            <div class="panel-shell panel-shell-overview">
+              <div id="overviewGrid" class="overview-grid"></div>
+            </div>
+          </section>
+
+          <section class="card side-card">
+            <div class="card-head">
+              <div>
+                <p class="card-kicker">&#35838;&#22530;&#24037;&#20855;</p>
+                <h2>&#35745;&#26102;&#19982;&#20498;&#35745;&#26102;</h2>
+              </div>
+            </div>
+            <div class="timer-stack">
+              <article class="timer-box">
+                <p class="timer-label">&#35745;&#26102;&#22120;</p>
+                <div id="stopwatchDisplay" class="time-display">00:00.0</div>
+                <div class="timer-actions">
+                  <button id="stopwatchToggleBtn" class="mini-action mini-action-green" type="button">&#24320;&#22987;</button>
+                  <button id="stopwatchResetBtn" class="mini-action" type="button">&#22797;&#20301;</button>
+                </div>
+              </article>
+
+              <article id="countdownBox" class="timer-box countdown-box">
+                <p class="timer-label">&#20498;&#35745;&#26102;</p>
+                <div id="countdownDisplay" class="time-display">05:00</div>
+                <div class="countdown-presets" role="group" aria-label="&#20498;&#35745;&#26102;&#24555;&#25463;&#39044;&#35774;">
+                  <button class="mini-action countdown-preset-btn" type="button" data-countdown-preset="60">1 &#20998;&#38047;</button>
+                  <button class="mini-action countdown-preset-btn" type="button" data-countdown-preset="180">3 &#20998;&#38047;</button>
+                  <button class="mini-action countdown-preset-btn" type="button" data-countdown-preset="300">5 &#20998;&#38047;</button>
+                  <button class="mini-action countdown-preset-btn" type="button" data-countdown-preset="600">10 &#20998;&#38047;</button>
+                  <button class="mini-action countdown-preset-btn" type="button" data-countdown-preset="1200">20 &#20998;&#38047;</button>
+                </div>
+                <form id="countdownPresetForm" class="countdown-form">
+                  <label class="hero-field small-field">
+                    <span>&#20998;</span>
+                    <input id="countdownMinutes" type="number" min="0" max="999" value="5" />
+                  </label>
+                  <label class="hero-field small-field">
+                    <span>&#31186;</span>
+                    <input id="countdownSeconds" type="number" min="0" max="59" value="0" />
+                  </label>
+                  <button class="mini-action mini-action-orange" type="submit">&#35774;&#23450;</button>
+                </form>
+                <div class="timer-actions">
+                  <button id="countdownToggleBtn" class="mini-action mini-action-orange" type="button">&#24320;&#22987;</button>
+                  <button id="countdownResetBtn" class="mini-action" type="button">&#22797;&#20301;</button>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="card side-card">
+            <div class="card-head">
+              <div>
+                <p class="card-kicker">&#35838;&#22530;&#23637;&#31034;</p>
+                <h2>&#38543;&#26426;&#28857;&#21517;&#19982;&#24748;&#28014;&#31383;</h2>
+              </div>
+            </div>
+            <div class="feature-panel">
+              <div id="randomResultCard" class="random-card">&#36824;&#27809;&#26377;&#38543;&#26426;&#28857;&#21517;&#32467;&#26524;&#12290;</div>
+              <div id="widgetPreview" class="widget-preview">
+                <span id="widgetPreviewGlyph">&#29677;</span>
+                <small id="widgetPreviewText">&#24453;&#21629;</small>
+              </div>
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      <dialog id="modalDialog" class="modal-dialog">
+        <form id="modalForm" class="modal-form" method="dialog">
+          <div class="modal-head">
+            <h2 id="modalTitle">&#25805;&#20316;</h2>
+            <button id="modalCloseBtn" class="modal-close" type="button" aria-label="&#20851;&#38381;">&#215;</button>
+          </div>
+          <div id="modalBody" class="modal-body"></div>
+          <div class="modal-actions">
+            <button id="modalCancelBtn" class="mini-action" type="button">&#21462;&#28040;</button>
+            <button id="modalSubmitBtn" class="mini-action mini-action-green" type="submit">&#30830;&#23450;</button>
+          </div>
+        </form>
+      </dialog>
+
+      <section id="presentationOverlay" class="presentation-overlay" aria-hidden="true">
+        <div class="presentation-shell">
+          <div class="presentation-bar">
+            <div>
+              <p class="presentation-tag">&#22823;&#23631;&#23637;&#31034;&#27169;&#24335;</p>
+              <h2 id="presentationBoardTitle">&#24403;&#21069;&#38754;&#26495;</h2>
+            </div>
+            <div class="presentation-actions">
+              <button id="presentationRefreshBtn" class="mini-action" type="button">&#21047;&#26032;&#25968;&#25454;</button>
+              <button id="presentationExitBtn" class="mini-action mini-action-orange" type="button">&#36864;&#20986;&#22823;&#23631;</button>
+            </div>
+          </div>
+
+          <div class="presentation-grid">
+            <section class="presentation-card presentation-time-card">
+              <p class="presentation-card-title">&#35838;&#22530;&#35745;&#26102;</p>
+              <div id="presentationTimeDisplay" class="presentation-time">00:00.0</div>
+              <div id="presentationModeLabel" class="presentation-mode-label">&#24453;&#21629;</div>
+            </section>
+
+            <section id="presentationRandomCard" class="presentation-card presentation-random-card presentation-random-clickable" role="button" tabindex="0" aria-label="&#38543;&#26426;&#28857;&#21517;">
+              <p class="presentation-card-title">&#38543;&#26426;&#28857;&#21517;</p>
+              <div id="presentationRandomName" class="presentation-random-name">&#20934;&#22791;&#24320;&#22987;</div>
+              <div id="presentationRandomMeta" class="presentation-random-meta">&#28857;&#20987;&#20027;&#30028;&#38754;&#30340;&#8220;&#38543;&#26426;&#28857;&#21517;&#8221;&#21518;&#65292;&#36825;&#37324;&#20250;&#21516;&#27493;&#26174;&#31034;&#32467;&#26524;&#12290;</div>
+            </section>
+
+            <section class="presentation-card">
+              <p class="presentation-card-title">&#23567;&#32452;&#25490;&#34892;&#27036;</p>
+              <div id="presentationGroupRanking" class="presentation-ranking-list"></div>
+            </section>
+
+            <section class="presentation-card">
+              <p class="presentation-card-title">&#23398;&#29983;&#25490;&#34892;&#27036;</p>
+              <div id="presentationStudentRanking" class="presentation-ranking-list"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <div id="toastStack" class="toast-stack"></div>
+    </div>
+
+    <script src="./app-runtime.js"></script>
+    <script src="./ui-runtime.js"></script>
+    <script src="./shop-runtime.js"></script>
+    <script src="./renderer.js"></script>
+    <script src="./renderer-overrides.js"></script>
+  </body>
+</html>
+
