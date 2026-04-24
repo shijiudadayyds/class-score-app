@@ -131,6 +131,14 @@
                 const arenaPet = createArenaPetFromTemplate(opponent, pet);
                 const arenaStats = getPetDerivedStats(arenaPet);
                 const arenaSpecies = getPetSpecies(opponent.speciesId);
+                const challengeCost = Math.max(0, Number(opponent.entryCost) || 0);
+                const rewardCoins = Math.max(0, Number(opponent.rewardCoins) || 0);
+                const canChallenge = !isPetDead(pet) && student.score >= challengeCost;
+                const challengeHint = isPetDead(pet)
+                  ? '当前宠物已倒下，无法挑战。'
+                  : canChallenge
+                    ? `将消耗 ${challengeCost} 积分入场。`
+                    : `当前积分 ${student.score}，至少需要 ${challengeCost} 积分才能挑战。`;
                 return `
                   <article class="pet-arena-card" ${getPetThemeStyleAttribute(opponent.speciesId)}>
                     ${renderPetAvatarMarkup(opponent.speciesId, opponent.name)}
@@ -138,12 +146,15 @@
                     <small>${escapeHtml(arenaSpecies.name)} · ${escapeHtml(arenaSpecies.rarity)} · Lv.${arenaStats.level}</small>
                     <p class="modal-help">${escapeHtml(opponent.description)}</p>
                     <div class="preview-tag-row">
+                      <span class="preview-tag">门票 ${challengeCost} 积分</span>
                       <span class="preview-tag">成长奖励 +${opponent.rewardGrowth}</span>
+                      ${rewardCoins > 0 ? `<span class="preview-tag">胜利奖励 +${rewardCoins} 积分</span>` : ''}
                       <span class="preview-tag">攻击 ${arenaStats.attackMin}-${arenaStats.attackMax}</span>
                     </div>
+                    <p class="modal-help">${escapeHtml(challengeHint)}</p>
                     <div class="timer-actions">
-                      <button class="mini-action mini-action-orange" type="button" data-action="battle-start" data-opponent-id="${opponent.id}" ${isPetDead(pet) ? 'disabled' : ''}>开始挑战</button>
-                      <button class="mini-action" type="button" data-action="battle-start-auto" data-opponent-id="${opponent.id}" ${isPetDead(pet) ? 'disabled' : ''}>自动挑战</button>
+                      <button class="mini-action mini-action-orange" type="button" data-action="battle-start" data-opponent-id="${opponent.id}" ${canChallenge ? '' : 'disabled'}>开始挑战</button>
+                      <button class="mini-action" type="button" data-action="battle-start-auto" data-opponent-id="${opponent.id}" ${canChallenge ? '' : 'disabled'}>自动挑战</button>
                     </div>
                   </article>
                 `;
@@ -162,7 +173,7 @@
       const resultTitle = session.status === 'win' ? '战斗胜利' : session.status === 'loss' ? '战斗失败' : '';
       const resultCopy = session.result
         ? session.result.outcome === 'win'
-          ? `获得成长值 +${session.result.growthGain}${session.result.leveledUp ? `，并升到 Lv.${session.result.level}` : ''}。`
+          ? `获得成长值 +${session.result.growthGain}${session.result.rewardCoins > 0 ? `，积分 +${session.result.rewardCoins}` : ''}${session.result.leveledUp ? `，并升到 Lv.${session.result.level}` : ''}。`
           : isPetDead(pet) ? '宠物已经倒下，需要前往宠物商城补充复活资源。' : '战绩已记录，可以调整状态后再战。'
         : '';
 
@@ -410,6 +421,7 @@
       const progress = getPetProgress(activePet);
       const stats = getPetDerivedStats(activePet);
       const dead = isPetDead(activePet);
+      const learnedSkillCount = Array.isArray(activePet.learnedSkillIds) ? activePet.learnedSkillIds.length : 0;
       const autoReviveLabel = reviveCount > 0
         ? `立即使用复活币（${reviveCount}）`
         : `花费${reviveRule?.cost || 10}积分立即复活`;
@@ -435,6 +447,7 @@
                 <span class="preview-tag">战绩 ${activePet.wins}/${activePet.losses}</span>
                 <span class="preview-tag">羁绊 ${activePet.bond}</span>
                 <span class="preview-tag">喂养 ${activePet.feedCount} 次</span>
+                <span class="preview-tag">技能 ${learnedSkillCount}/${PET_MAX_SKILL_SLOTS}</span>
                 <span class="preview-tag">复活币 ${reviveCount}</span>
                 ${dead ? '<span class="preview-tag pet-dead-badge">已倒下</span>' : ''}
               </div>
@@ -456,8 +469,10 @@
               <div class="pet-stat-grid">
                 <article class="pet-stat-card"><strong>Lv.${progress.level}</strong><span>成长等级</span></article>
                 <article class="pet-stat-card"><strong>${activePet.growth}</strong><span>累计成长值</span></article>
+                <article class="pet-stat-card"><strong>${learnedSkillCount}/${PET_MAX_SKILL_SLOTS}</strong><span>已领悟技能</span></article>
                 <article class="pet-stat-card"><strong>${formatTimestamp(activePet.hatchedAt)}</strong><span>孵化时间</span></article>
                 <article class="pet-stat-card"><strong>${escapeHtml(species.rarity)}</strong><span>稀有度</span></article>
+                <article class="pet-stat-card"><strong>Lv.${PET_MAX_LEVEL}</strong><span>满级上限</span></article>
               </div>
               <div class="pet-progress-shell">
                 <div class="pet-progress-track">
@@ -475,6 +490,7 @@
         </section>
         <section class="modal-panel">
           <h3>技能学习</h3>
+          <p class="modal-help">宠物初始自带 1 个技能，每升 10 级自动增加 1 个技能位，满级为 Lv.${PET_MAX_LEVEL}。</p>
           <div class="pet-skill-grid">${renderPetSkillCards(activePet, student)}</div>
         </section>
         <section class="modal-panel">

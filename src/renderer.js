@@ -24,6 +24,9 @@ const DEFAULT_MINUS_TEMPLATES = [
 ];
 
 const PET_LEVEL_STEP = 60;
+const PET_MAX_LEVEL = 100;
+const PET_SKILL_SLOT_LEVEL_STEP = 10;
+const PET_MAX_SKILL_SLOTS = 1 + Math.floor(PET_MAX_LEVEL / PET_SKILL_SLOT_LEVEL_STEP);
 const SCORE_LIMIT = 999;
 const PET_EGG_HATCH_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 const PET_EGG_ACCELERATION_HOUR_MS = 60 * 60 * 1000;
@@ -2431,17 +2434,24 @@ function getFeedableItems(board, student) {
 }
 
 function getPetLevel(pet) {
-  return Math.floor((Math.max(0, Number(pet?.growth) || 0)) / PET_LEVEL_STEP) + 1;
+  const rawLevel = Math.floor((Math.max(0, Number(pet?.growth) || 0)) / PET_LEVEL_STEP) + 1;
+  return Math.max(1, Math.min(PET_MAX_LEVEL, rawLevel));
 }
 
 function getPetStage(level) {
-  if (level >= 8) {
+  if (level >= PET_MAX_LEVEL) {
+    return '满阶王者';
+  }
+  if (level >= 80) {
+    return '传奇伙伴';
+  }
+  if (level >= 60) {
     return '闪耀伙伴';
   }
-  if (level >= 5) {
+  if (level >= 40) {
     return '活力伙伴';
   }
-  if (level >= 3) {
+  if (level >= 20) {
     return '成长伙伴';
   }
   return '幼年伙伴';
@@ -2449,9 +2459,19 @@ function getPetStage(level) {
 
 function getPetProgress(pet) {
   const growth = Math.max(0, Number(pet?.growth) || 0);
+  const level = getPetLevel(pet);
+  if (level >= PET_MAX_LEVEL) {
+    return {
+      level,
+      current: PET_LEVEL_STEP,
+      total: PET_LEVEL_STEP,
+      ratio: 1,
+      remaining: 0
+    };
+  }
   const progress = growth % PET_LEVEL_STEP;
   return {
-    level: getPetLevel(pet),
+    level,
     current: progress,
     total: PET_LEVEL_STEP,
     ratio: Math.min(1, progress / PET_LEVEL_STEP),
@@ -2467,11 +2487,93 @@ function getSpeciesBattleProfile(speciesId) {
   return PET_SPECIES_BATTLE_PROFILES[speciesId] || PET_SPECIES_BATTLE_PROFILES['cloud-corgi'];
 }
 
+function getPetSkillSlotCount(levelOrPet) {
+  const rawLevel = typeof levelOrPet === 'number' ? levelOrPet : getPetLevel(levelOrPet);
+  const level = Math.max(1, Math.min(PET_MAX_LEVEL, Math.floor(Number(rawLevel) || 1)));
+  return Math.min(PET_MAX_SKILL_SLOTS, 1 + Math.floor(level / PET_SKILL_SLOT_LEVEL_STEP));
+}
+
+function getPetSkillUnlockLevel(slotIndex) {
+  return slotIndex <= 0
+    ? 1
+    : Math.min(PET_MAX_LEVEL, slotIndex * PET_SKILL_SLOT_LEVEL_STEP);
+}
+
+function scorePetSkillAffinity(speciesId, skill, preferredSkillIds = []) {
+  const battleProfile = getSpeciesBattleProfile(speciesId);
+  const preferredIndex = preferredSkillIds.indexOf(skill.id);
+  if (preferredIndex >= 0) {
+    return 5000 - (preferredIndex * 50);
+  }
+
+  const offenseWeight = battleProfile.baseAttack + (battleProfile.attackGrowth * 4);
+  const defenseWeight = battleProfile.baseDefense + (battleProfile.defenseGrowth * 5);
+  const manaWeight = battleProfile.baseMana + (battleProfile.manaGrowth * 4);
+  const hpWeight = battleProfile.baseHp + (battleProfile.hpGrowth * 4);
+
+  let score = ((skill.minDamage + skill.maxDamage) * 0.48) - (skill.manaCost * 0.4);
+  if (skill.restoreHpRatio) {
+    score += (hpWeight * 0.18) + (defenseWeight * 0.24);
+  }
+  if (skill.restoreMana) {
+    score += (manaWeight * 0.2) + (skill.restoreMana * 2.8);
+  }
+  if (skill.manaBurn) {
+    score += (offenseWeight * 0.22) + (manaWeight * 0.14) + (skill.manaBurn * 1.4);
+  }
+  if (skill.defenseBuff) {
+    score += (defenseWeight * 0.32) + (skill.defenseBuff * 8);
+  }
+  if (skill.dodgeBoost) {
+    score += (defenseWeight * 0.18) + (skill.dodgeBoost * 120);
+  }
+  if (skill.critBoost) {
+    score += (offenseWeight * 0.26) + (skill.critBoost * 160);
+  }
+
+  return score + ((Math.abs(hashString(`${speciesId}:${skill.id}`)) % 1000) / 10000);
+}
+
 function getPetSkillPool(pet) {
   const speciesId = typeof pet === 'string' ? pet : pet?.speciesId;
-  return (getSpeciesBattleProfile(speciesId).skillPool || [])
+  const preferredSkillIds = [...new Set(getSpeciesBattleProfile(speciesId).skillPool || [])];
+  const selectedIds = [];
+  const seen = new Set();
+
+  preferredSkillIds.forEach((skillId) => {
+    if (!seen.has(skillId) && getPetSkill(skillId)) {
+      selectedIds.push(skillId);
+      seen.add(skillId);
+    }
+  });
+
+  PET_SKILLS
+    .filter((skill) => !seen.has(skill.id))
+    .sort((left, right) => scorePetSkillAffinity(speciesId, right, preferredSkillIds) - scorePetSkillAffinity(speciesId, left, preferredSkillIds))
+    .forEach((skill) => {
+      if (selectedIds.length < PET_MAX_SKILL_SLOTS) {
+        selectedIds.push(skill.id);
+        seen.add(skill.id);
+      }
+    });
+
+  return selectedIds
+    .slice(0, PET_MAX_SKILL_SLOTS)
     .map((skillId) => getPetSkill(skillId))
     .filter(Boolean);
+}
+
+function syncPetLearnedSkills(pet) {
+  if (!pet) {
+    return [];
+  }
+
+  const learnedSkillIds = getPetSkillPool(pet)
+    .slice(0, getPetSkillSlotCount(pet))
+    .map((skill) => skill.id);
+
+  pet.learnedSkillIds = learnedSkillIds;
+  return learnedSkillIds;
 }
 
 function getPetDerivedStats(pet) {
@@ -2504,6 +2606,7 @@ function syncPetVitals(pet, options = {}) {
     return;
   }
 
+  syncPetLearnedSkills(pet);
   const stats = getPetDerivedStats(pet);
   const previousMaxHp = Math.max(1, Number(options.previousMaxHp) || stats.maxHp);
   const previousMaxMana = Math.max(1, Number(options.previousMaxMana) || stats.maxMana);
@@ -2565,7 +2668,8 @@ function grantPetGrowth(pet, growthGain) {
 
   const previousStats = getPetDerivedStats(pet);
   const previousLevel = previousStats.level;
-  pet.growth += growthGain;
+  const maxGrowth = (PET_MAX_LEVEL - 1) * PET_LEVEL_STEP;
+  pet.growth = Math.min(maxGrowth, Math.max(0, Number(pet.growth) || 0) + growthGain);
   syncPetVitals(pet, { previousMaxHp: previousStats.maxHp, previousMaxMana: previousStats.maxMana, preserveRatio: true });
   const nextLevel = getPetLevel(pet);
   if (nextLevel > previousLevel) {
@@ -2582,13 +2686,19 @@ function grantPetGrowth(pet, growthGain) {
 function getPetSkillStates(pet, student) {
   const petLevel = getPetLevel(pet);
   const learnedSkillIds = new Set(Array.isArray(pet?.learnedSkillIds) ? pet.learnedSkillIds : []);
-  const score = Number(student?.score) || 0;
-  return getPetSkillPool(pet).map((skill) => ({
+  const skillCapacity = getPetSkillSlotCount(petLevel);
+  return getPetSkillPool(pet).map((skill, index) => {
+    const unlockLevel = getPetSkillUnlockLevel(index);
+    return {
     ...skill,
+    slotIndex: index + 1,
+    unlockLevel,
+    skillCapacity,
     learned: learnedSkillIds.has(skill.id),
-    unlocked: petLevel >= skill.unlockLevel,
-    affordable: score >= skill.learnCost
-  }));
+    unlocked: petLevel >= unlockLevel,
+    affordable: true
+  };
+  });
 }
 
 function getPetLearnedSkills(pet) {
@@ -2820,14 +2930,14 @@ function getArenaOpponentTemplate(opponentId) {
 }
 
 function createArenaPetFromTemplate(template, playerPet) {
-  const level = Math.max(1, Math.min(12, getPetLevel(playerPet) + Math.floor(Number(template?.levelOffset) || 0)));
+  const level = Math.max(1, Math.min(PET_MAX_LEVEL, getPetLevel(playerPet) + Math.floor(Number(template?.levelOffset) || 0)));
   const arenaPet = normalizePet({
     id: createId('arena-pet'),
     speciesId: template?.speciesId,
     name: template?.name || getPetSpecies(template?.speciesId).name,
     growth: Math.max(0, level - 1) * PET_LEVEL_STEP,
     bond: level * 5,
-    learnedSkillIds: getPetSkillPool(template?.speciesId).map((skill) => skill.id),
+    learnedSkillIds: getPetSkillPool(template?.speciesId).slice(0, getPetSkillSlotCount(level)).map((skill) => skill.id),
     defenseBuff: 0,
     dodgeBuff: 0,
     vitalsInitialized: false,
@@ -3196,14 +3306,17 @@ function settlePetBattle(outcome) {
         createHistoryEntry(`竞技场胜利：${petBattleState.opponentPet?.name || '竞技场对手'}`, petBattleState.opponentTemplate.rewardCoins, '宠物对战')
       );
     }
+    syncPetVitals(pet, { fill: true });
+    pet.defenseBuff = 0;
+    pet.dodgeBuff = 0;
   } else {
     pet.losses += 1;
   }
 
   const message = outcome === 'win'
     ? growthResult.leveledUp
-      ? `${pet.name} 获胜并升到 Lv.${growthResult.level}。`
-      : `${pet.name} 获胜，获得成长值 +${petBattleState.opponentTemplate?.rewardGrowth || 0}。`
+      ? `${pet.name} 获胜并升到 Lv.${growthResult.level}，状态已恢复至最佳。`
+      : `${pet.name} 获胜，获得成长值 +${petBattleState.opponentTemplate?.rewardGrowth || 0}，状态已恢复至最佳。`
     : isPetDead(pet)
       ? `${pet.name} 战败倒下，需使用复活币才能继续出战。`
       : `${pet.name} 本场落败，已记录战绩。`;
@@ -3212,6 +3325,7 @@ function settlePetBattle(outcome) {
   clearPetBattleAnimation();
   petBattleState.autoMode = false;
   petBattleState.status = outcome;
+  petBattleState.playerPet = createBattlePetSnapshot(pet);
   petBattleState.result = {
     outcome,
     growthGain: petBattleState.opponentTemplate?.rewardGrowth || 0,
@@ -3375,7 +3489,7 @@ function createPetForStudent(student, speciesId) {
     losses: 0,
     currentHp: 0,
     currentMana: 0,
-    learnedSkillIds: [],
+    learnedSkillIds: getPetSkillPool(species.id).slice(0, 1).map((skill) => skill.id),
     defenseBuff: 0,
     dodgeBuff: 0,
     vitalsInitialized: false,
@@ -6063,12 +6177,8 @@ function renderPetSkillCards(pet, student) {
     }
 
     const buttonText = skill.learned
-      ? '已学会'
-      : !skill.unlocked
-        ? `Lv.${skill.unlockLevel} 解锁`
-        : !skill.affordable
-          ? `需 ${skill.learnCost} 积分`
-          : `学习技能 -${skill.learnCost}`;
+      ? '已掌握'
+      : `Lv.${skill.unlockLevel} 自动领悟`;
 
     return `
       <article class="pet-skill-card ${skill.learned ? 'is-learned' : ''} ${skill.unlocked ? '' : 'is-locked'}">
@@ -6077,13 +6187,14 @@ function renderPetSkillCards(pet, student) {
             <strong>${escapeHtml(skill.name)}</strong>
             <small>MP ${skill.manaCost} · 伤害 ${skill.minDamage}-${skill.maxDamage}</small>
           </div>
-          <span class="preview-tag">Lv.${skill.unlockLevel}</span>
+          <span class="preview-tag">技能位 ${skill.slotIndex}/${PET_MAX_SKILL_SLOTS}</span>
         </div>
         <p class="modal-help">${escapeHtml(skill.description)}</p>
         <div class="preview-tag-row">
+          <span class="preview-tag">${skill.learned ? '已自动掌握' : `需达到 Lv.${skill.unlockLevel}`}</span>
           ${notes.length > 0 ? notes.map((note) => `<span class="preview-tag">${escapeHtml(note)}</span>`).join('') : '<span class="preview-tag">直接伤害技能</span>'}
         </div>
-        <button class="mini-action ${skill.learned ? '' : skill.unlocked && skill.affordable ? 'mini-action-orange' : ''}" type="button" data-action="learn-pet-skill" data-skill-id="${skill.id}" ${skill.learned || !skill.unlocked || !skill.affordable ? 'disabled' : ''}>${buttonText}</button>
+        <button class="mini-action ${skill.learned ? '' : 'mini-action-orange'}" type="button" data-action="learn-pet-skill" data-skill-id="${skill.id}" disabled>${buttonText}</button>
       </article>
     `;
   }).join('');
@@ -6096,6 +6207,7 @@ function renderPetCollectionCards(student) {
       const level = getPetLevel(pet);
       const isActive = getActivePet(student)?.id === pet.id;
       const dead = isPetDead(pet);
+      const learnedSkillCount = Array.isArray(pet.learnedSkillIds) ? pet.learnedSkillIds.length : 0;
       return `
         <button class="pet-mini-card ${isActive ? 'is-active' : ''}" type="button" data-action="select-pet" data-pet-id="${pet.id}" ${getPetThemeStyleAttribute(species.id)}>
           ${renderPetAvatarMarkup(species.id, pet.name)}
@@ -6104,6 +6216,7 @@ function renderPetCollectionCards(student) {
           <div class="preview-tag-row">
             <span class="preview-tag">${dead ? '待复活' : `战绩 ${pet.wins}/${pet.losses}`}</span>
             <span class="preview-tag">羁绊 ${pet.bond}</span>
+            <span class="preview-tag">技能 ${learnedSkillCount}/${PET_MAX_SKILL_SLOTS}</span>
           </div>
         </button>
       `;
@@ -6620,22 +6733,11 @@ function learnSkillForActivePet(skillId) {
     return;
   }
   if (skillState.learned) {
-    showToast('这个技能已经学会了。');
-    return;
-  }
-  if (!skillState.unlocked) {
-    showToast(`宠物达到 Lv.${skillState.unlockLevel} 后才能学习该技能。`);
-    return;
-  }
-  if (!spendStudentPoints(student, skillState.learnCost, `学习技能：${skillState.name}`, '宠物家园')) {
-    showToast('积分不足，无法学习该技能。');
+    showToast('这个技能已经掌握了。');
     return;
   }
 
-  pet.learnedSkillIds.push(skillState.id);
-  pet.bond = Math.min(999, pet.bond + 6);
-  commitState(`${activePetName(student)} 学会了技能 ${skillState.name}。`);
-  reopenPetHomeLater();
+  showToast(`技能会在宠物达到 Lv.${skillState.unlockLevel} 时自动领悟。`);
 }
 
 function startPetBattleChallenge(opponentId, options = {}) {
