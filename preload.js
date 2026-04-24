@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('classScore', {
   startWidgetDrag: (screenX, screenY) => ipcRenderer.send('widget:drag-start', { screenX, screenY }),
   updateWidgetDrag: (screenX, screenY) => ipcRenderer.send('widget:drag-move', { screenX, screenY }),
   endWidgetDrag: () => ipcRenderer.send('widget:drag-end'),
+  setWidgetExpanded: (expanded) => ipcRenderer.send('widget:set-expanded', { expanded: Boolean(expanded) }),
   triggerWidgetAction: (action) => ipcRenderer.send('widget:action', { action }),
   openWidgetMenu: () => ipcRenderer.send('widget:open-menu'),
   onWidgetState: (callback) => {

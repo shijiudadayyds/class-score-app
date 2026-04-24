@@ -1,5 +1,7 @@
 const widgetShell = document.getElementById('widgetShell');
 const toggleButton = document.getElementById('toggleMainButton');
+const expandButton = document.getElementById('widgetExpandButton');
+const expandText = document.getElementById('widgetExpandText');
 const menuButton = document.getElementById('widgetMenuButton');
 const widgetStatus = document.getElementById('widgetStatus');
 const widgetBoardName = document.getElementById('widgetBoardName');
@@ -13,6 +15,7 @@ const DRAG_THRESHOLD = 6;
 let dragSession = null;
 let suppressClick = false;
 let positionLocked = false;
+let widgetExpanded = false;
 
 function clearDragVisualState() {
   document.body.classList.remove('is-pressing');
@@ -116,6 +119,12 @@ toggleButton.addEventListener('click', handleActionClick(() => {
   window.classScore.toggleMainWindow();
 }));
 
+expandButton?.addEventListener('click', handleActionClick(() => {
+  widgetExpanded = !widgetExpanded;
+  window.classScore.setWidgetExpanded(widgetExpanded);
+  renderWidgetExpandedState();
+}));
+
 menuButton.addEventListener('click', handleActionClick(() => {
   window.classScore.openWidgetMenu();
 }));
@@ -133,14 +142,28 @@ menuButton.addEventListener('pointerdown', (event) => {
   event.stopPropagation();
 });
 
+expandButton?.addEventListener('pointerdown', (event) => {
+  event.stopPropagation();
+});
+
 document.addEventListener('contextmenu', (event) => {
   event.preventDefault();
   window.classScore.openWidgetMenu();
 });
 
+function renderWidgetExpandedState() {
+  widgetShell.classList.toggle('is-expanded', widgetExpanded);
+  expandButton?.setAttribute('aria-expanded', widgetExpanded ? 'true' : 'false');
+  expandButton?.setAttribute('title', widgetExpanded ? '收起悬浮工具' : '展开悬浮工具');
+  if (expandText) {
+    expandText.textContent = widgetExpanded ? '收起工具' : '展开工具';
+  }
+}
+
 window.classScore.onWidgetState((payload) => {
   const modeClass = `mode-${payload.mode || 'idle'}`;
   positionLocked = Boolean(payload.positionLocked);
+  widgetExpanded = Boolean(payload.expanded);
   widgetShell.classList.toggle('is-locked', positionLocked);
   toggleButton.className = `widget-button ${modeClass}`;
   widgetStatus.className = `widget-status ${modeClass}${positionLocked ? ' is-locked' : ''}`;
@@ -160,4 +183,5 @@ window.classScore.onWidgetState((payload) => {
   toggleButton.title = payload.boardName
     ? `${payload.boardName} · ${payload.primaryText || '待命'}${payload.secondaryText ? ` · ${payload.secondaryText}` : ''}`
     : '显示或隐藏主窗口';
+  renderWidgetExpandedState();
 });

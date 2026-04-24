@@ -9,9 +9,9 @@ const DATA_FILE = path.join(app.getPath('userData'), 'class-score-data.json');
 const WIDGET_STATE_FILE = path.join(app.getPath('userData'), 'widget-window.json');
 const SAFETY_SNAPSHOT_FILE = path.join(app.getPath('userData'), 'class-score-safety-snapshots.json');
 const WIDGET_WIDTH = 196;
-const WIDGET_HEIGHT = 320;
+const WIDGET_COLLAPSED_HEIGHT = 224;
+const WIDGET_EXPANDED_HEIGHT = 360;
 const WIDGET_EDGE_SNAP_THRESHOLD = 26;
-const STEP_OPTIONS = [1, 2, 5, 10];
 const MAX_SAFETY_SNAPSHOTS = 12;
 const DEFAULT_PLUS_TEMPLATES = [
   { id: 'plus-speaking', name: '积极发言', value: 2 },
@@ -38,6 +38,7 @@ let isQuitting = false;
 let widgetStateWriteTimer;
 let widgetDragState = null;
 let widgetPositionLocked = false;
+let widgetExpanded = false;
 let lastWidgetPayload = null;
 
 app.setAppUserModelId(APP_ID);
@@ -289,9 +290,7 @@ function normalizeBoard(candidate, index) {
       minus: normalizeTemplateList(candidate?.scoreTemplates?.minus, DEFAULT_MINUS_TEMPLATES)
     },
     settings: {
-      stepValue: STEP_OPTIONS.includes(Number(candidate?.settings?.stepValue))
-        ? Number(candidate.settings.stepValue)
-        : 1
+      stepValue: 1
     },
     createdAt: Number.isFinite(Number(candidate?.createdAt)) ? Number(candidate.createdAt) : Date.now()
   };
@@ -856,10 +855,14 @@ function endWidgetDrag() {
   widgetDragState = null;
 }
 
-function getDefaultWidgetBounds() {
+function getWidgetHeight(expanded = widgetExpanded) {
+  return expanded ? WIDGET_EXPANDED_HEIGHT : WIDGET_COLLAPSED_HEIGHT;
+}
+
+function getDefaultWidgetBounds(expanded = widgetExpanded) {
   const { workArea } = screen.getPrimaryDisplay();
   const width = WIDGET_WIDTH;
-  const height = WIDGET_HEIGHT;
+  const height = getWidgetHeight(expanded);
 
   return {
     width,
@@ -869,10 +872,10 @@ function getDefaultWidgetBounds() {
   };
 }
 
-function clampWidgetBounds(candidate) {
-  const fallback = getDefaultWidgetBounds();
+function clampWidgetBounds(candidate, expanded = widgetExpanded) {
+  const fallback = getDefaultWidgetBounds(expanded);
   const width = WIDGET_WIDTH;
-  const height = WIDGET_HEIGHT;
+  const height = getWidgetHeight(expanded);
   const display = screen.getDisplayNearestPoint({
     x: Number.isFinite(Number(candidate?.x)) ? Number(candidate.x) : fallback.x,
     y: Number.isFinite(Number(candidate?.y)) ? Number(candidate.y) : fallback.y
@@ -916,9 +919,11 @@ async function readWidgetBounds() {
     const raw = await fs.readFile(WIDGET_STATE_FILE, 'utf8');
     const parsed = JSON.parse(raw);
     widgetPositionLocked = Boolean(parsed?.locked);
-    return clampWidgetBounds(parsed);
+    widgetExpanded = Boolean(parsed?.expanded);
+    return clampWidgetBounds(parsed, widgetExpanded);
   } catch (error) {
     widgetPositionLocked = false;
+    widgetExpanded = false;
     return getDefaultWidgetBounds();
   }
 }
@@ -930,11 +935,11 @@ function queueSaveWidgetBounds() {
 
   clearTimeout(widgetStateWriteTimer);
   widgetStateWriteTimer = setTimeout(async () => {
-    const bounds = clampWidgetBounds(widgetWindow.getBounds());
+    const bounds = clampWidgetBounds(widgetWindow.getBounds(), widgetExpanded);
     await fs.mkdir(path.dirname(WIDGET_STATE_FILE), { recursive: true });
     await fs.writeFile(
       WIDGET_STATE_FILE,
-      `${JSON.stringify({ ...bounds, locked: widgetPositionLocked }, null, 2)}\n`,
+      `${JSON.stringify({ ...bounds, locked: widgetPositionLocked, expanded: widgetExpanded }, null, 2)}\n`,
       'utf8'
     );
   }, 180);
@@ -956,7 +961,8 @@ function pushWidgetState(payload = lastWidgetPayload) {
   };
   widgetWindow.webContents.send('widget:state', {
     ...safePayload,
-    positionLocked: widgetPositionLocked
+    positionLocked: widgetPositionLocked,
+    expanded: widgetExpanded
   });
 }
 
@@ -1003,12 +1009,36 @@ function setWidgetPositionLocked(locked) {
   pushWidgetState();
 }
 
+function setWidgetExpanded(expanded) {
+  const nextExpanded = Boolean(expanded);
+  widgetExpanded = nextExpanded;
+
+  if (!widgetWindow || widgetWindow.isDestroyed()) {
+    return;
+  }
+
+  const currentBounds = widgetWindow.getBounds();
+  const nextHeight = getWidgetHeight(nextExpanded);
+  const nextBounds = clampWidgetBounds(
+    {
+      ...currentBounds,
+      height: nextHeight,
+      y: currentBounds.y + currentBounds.height - nextHeight
+    },
+    nextExpanded
+  );
+
+  widgetWindow.setBounds(nextBounds);
+  queueSaveWidgetBounds();
+  pushWidgetState();
+}
+
 function resetWidgetWindowPosition() {
   if (!widgetWindow || widgetWindow.isDestroyed()) {
     return;
   }
 
-  widgetWindow.setBounds(getDefaultWidgetBounds());
+  widgetWindow.setBounds(getDefaultWidgetBounds(widgetExpanded));
   queueSaveWidgetBounds();
 }
 
@@ -1442,6 +1472,10 @@ function registerIpc() {
 
   ipcMain.on('widget:drag-end', () => {
     endWidgetDrag();
+  });
+
+  ipcMain.on('widget:set-expanded', (_event, payload) => {
+    setWidgetExpanded(Boolean(payload?.expanded));
   });
 
   ipcMain.on('widget:action', (_event, payload) => {

@@ -1,4 +1,3 @@
-const STEP_OPTIONS = [1, 2, 5, 10];
 const GROUP_FILTER_ALL = '__all__';
 const GROUP_FILTER_UNGROUPED = '__ungrouped__';
 const GROUP_CREATE_OPTION = '__create_group__';
@@ -755,9 +754,7 @@ function normalizeBoard(candidate, index) {
       minus: normalizeTemplateList(candidate?.scoreTemplates?.minus, DEFAULT_MINUS_TEMPLATES)
     },
     settings: {
-      stepValue: STEP_OPTIONS.includes(Number(candidate?.settings?.stepValue))
-        ? Number(candidate.settings.stepValue)
-        : 1
+      stepValue: 1
     },
     createdAt: Number.isFinite(Number(candidate?.createdAt)) ? Number(candidate.createdAt) : Date.now()
   };
@@ -1858,8 +1855,6 @@ function cacheElements() {
     boardTitle: document.getElementById('boardTitle'),
     boardSelect: document.getElementById('boardSelect'),
     studentSummaryPill: document.getElementById('studentSummaryPill'),
-    stepSummaryPill: document.getElementById('stepSummaryPill'),
-    stepValueButtonMeta: document.getElementById('stepValueButtonMeta'),
     actionPanel: document.getElementById('actionPanel'),
     actionPanelContent: document.getElementById('actionPanelContent'),
     toggleActionPanelBtn: document.getElementById('toggleActionPanelBtn'),
@@ -1875,7 +1870,6 @@ function cacheElements() {
     randomPickBtn: document.getElementById('randomPickBtn'),
     importBackupBtn: document.getElementById('importBackupBtn'),
     exportBackupBtn: document.getElementById('exportBackupBtn'),
-    stepValueBtn: document.getElementById('stepValueBtn'),
     ruleReasonBtn: document.getElementById('ruleReasonBtn'),
     clearBoardBtn: document.getElementById('clearBoardBtn'),
     resetBoardScoresBtn: document.getElementById('resetBoardScoresBtn'),
@@ -2009,7 +2003,6 @@ function bindEvents() {
   ui.randomPickBtn.addEventListener('click', randomPickStudent);
   ui.importBackupBtn.addEventListener('click', importBackup);
   ui.exportBackupBtn.addEventListener('click', exportBackup);
-  ui.stepValueBtn.addEventListener('click', cycleStepValue);
   ui.ruleReasonBtn.addEventListener('click', openRulesModal);
   ui.focusRuleBtn.addEventListener('click', openRulesModal);
   ui.clearBoardBtn.addEventListener('click', clearCurrentBoard);
@@ -2194,8 +2187,6 @@ function renderHeader() {
     .join('');
 
   ui.studentSummaryPill.textContent = `${board.students.length} 名学生`;
-  ui.stepSummaryPill.textContent = `步进 ${board.settings.stepValue} 分`;
-  ui.stepValueButtonMeta.textContent = `当前 ${board.settings.stepValue} 分`;
   ui.groupCountBadge.textContent = `${board.groups.length} 组`;
   ui.manageGroupsBtn.disabled = false;
   ui.checkedCountBadge.textContent = `已勾选 ${checkedStudentIds.size} 人`;
@@ -2209,7 +2200,7 @@ function renderHeader() {
   ui.actionPanelContent.hidden = Boolean(appState.appSettings.quickActionsCollapsed);
   ui.toggleActionPanelBtn.textContent = appState.appSettings.quickActionsCollapsed ? '显示功能面板' : '隐藏功能面板';
   ui.toggleActionPanelBtn.setAttribute('aria-expanded', appState.appSettings.quickActionsCollapsed ? 'false' : 'true');
-  ui.quickAdjustValue.value = String(board.settings.stepValue);
+  ui.quickAdjustValue.value = '1';
   ui.undoBtn.disabled = historyState.undo.length === 0;
   ui.redoBtn.disabled = historyState.redo.length === 0;
   ui.safetyRestoreBtn.disabled = safetyState.snapshots.length === 0;
@@ -4709,7 +4700,7 @@ function openCreateBoardModal() {
         <span>面板名称</span>
         <input name="boardName" type="text" maxlength="24" autocomplete="off" placeholder="例如：新面板 ${nextIndex}" />
       </label>
-      <p class="modal-help">新面板会沿用当前面板的规则原因和分值步进设置，学生名单和小组将从空白开始。</p>
+      <p class="modal-help">新面板会沿用当前面板的规则原因，学生名单和小组将从空白开始。</p>
     `,
     onSubmit: (formData) => {
       const boardName = formData.get('boardName')?.toString().trim() || generateBoardName();
@@ -4720,7 +4711,6 @@ function openCreateBoardModal() {
           plus: cloneTemplates(currentBoard.scoreTemplates.plus),
           minus: cloneTemplates(currentBoard.scoreTemplates.minus)
         };
-        board.settings.stepValue = currentBoard.settings.stepValue;
       }
 
       appState.boards.push(board);
@@ -5160,17 +5150,6 @@ async function exportBackup() {
   showToast(`备份已导出到：${result.filePath}`);
 }
 
-function cycleStepValue() {
-  const board = getActiveBoard();
-  if (!board) {
-    return;
-  }
-
-  const currentIndex = STEP_OPTIONS.indexOf(board.settings.stepValue);
-  board.settings.stepValue = STEP_OPTIONS[(currentIndex + 1) % STEP_OPTIONS.length];
-  commitState(`当前分值步进已切换为 ${board.settings.stepValue} 分。`);
-}
-
 function openRulesModal() {
   const board = getActiveBoard();
   if (!board) {
@@ -5353,7 +5332,7 @@ function openGroupBonusModal() {
         </label>
         <label class="hero-field">
           <span>加分分值</span>
-          <input name="value" type="number" min="1" max="999" value="${board.settings.stepValue}" />
+          <input name="value" type="number" min="1" max="999" value="1" />
         </label>
         <label class="hero-field">
           <span>原因</span>
@@ -5410,7 +5389,7 @@ function openGroupedBaseBonusModal() {
       <div class="modal-inline">
         <label class="hero-field">
           <span>加分分值</span>
-          <input name="value" type="number" min="1" max="999" value="${board.settings.stepValue}" />
+          <input name="value" type="number" min="1" max="999" value="1" />
         </label>
         <label class="hero-field">
           <span>原因</span>
@@ -5978,7 +5957,7 @@ function openBatchScoringModal() {
         </label>
         <label class="hero-field">
           <span>分值</span>
-          <input name="value" type="number" min="1" max="999" value="${board.settings.stepValue}" />
+          <input name="value" type="number" min="1" max="999" value="1" />
         </label>
       </div>
       <input name="label" type="text" maxlength="30" placeholder="原因名称，例如：课堂合作" />
@@ -7615,7 +7594,7 @@ function applyQuickAdjust() {
   const petEffects = applyDeltaToStudents(targets, label, delta, note);
   ui.quickAdjustLabel.value = '';
   ui.quickAdjustNote.value = '';
-  ui.quickAdjustValue.value = String(getActiveBoard()?.settings.stepValue || 1);
+  ui.quickAdjustValue.value = '1';
   commitState(
     targets.length > 1
       ? `已为 ${targets.length} 名学生完成自定义${delta > 0 ? '加' : '减'}分。${buildPetClassroomEffectMessage(petEffects)}`
