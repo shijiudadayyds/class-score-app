@@ -388,6 +388,35 @@ const uiRuntime = window.ClassScoreUiRuntime.createRuntime({
   }
 });
 
+const shopRuntime = window.ClassScoreShopRuntime.createRuntime({
+  getActiveBoard: () => getActiveBoard(),
+  getSelectedStudent: () => getSelectedStudent(),
+  getShopItems: (board) => getShopItems(board),
+  getBackpackItems: (board, student) => getBackpackItems(board, student),
+  getFeedableItems: (board, student) => getFeedableItems(board, student),
+  getReviveItems: (board, student) => getReviveItems(board, student),
+  getIncubatingEggs: (student) => getIncubatingEggs(student),
+  getStudentPets: (student) => getStudentPets(student),
+  getStudentInventoryCount: (student, itemId) => getStudentInventoryCount(student, itemId),
+  getDefaultShopIcon: (effectType) => getDefaultShopIcon(effectType),
+  getShopEffectTypeLabel: (effectType) => getShopEffectTypeLabel(effectType),
+  changeStudentScore: (student, delta, itemName, note) => changeStudentScore(student, delta, itemName, note),
+  updateStudentInventory: (student, itemId, delta) => updateStudentInventory(student, itemId, delta),
+  commitState: (message) => commitState(message),
+  reopenShopLater: () => reopenShopLater(),
+  reopenPetHomeLater: () => reopenPetHomeLater(),
+  createDefaultPetCollection: () => createDefaultPetCollection(),
+  createIncubatingEgg: (itemId) => createIncubatingEgg(itemId),
+  openModal: (config) => openModal(config),
+  openShopEditorModal: () => openShopEditorModal(),
+  openPetHomeModal: () => openPetHomeModal(),
+  showToast: (message) => showToast(message),
+  escapeHtml: (value) => escapeHtml(value),
+  scoreTone: (score) => scoreTone(score),
+  formatSignedScore: (score) => formatSignedScore(score)
+});
+const petRuntime = window.ClassScorePetRuntime.createRuntime();
+
 document.addEventListener('DOMContentLoaded', init);
 
 function createId(prefix) {
@@ -2735,265 +2764,39 @@ function applyDirectScoreDelta(delta, label = '', note = '') {
 }
 
 function isPetShopEffectType(effectType) {
-  return effectType === 'pet-egg' || effectType === 'snack' || effectType === 'revive';
+  return shopRuntime.isPetShopEffectType(effectType);
 }
 
 function getPetShopItems(board) {
-  return getShopItems(board).filter((item) => isPetShopEffectType(item.effectType));
+  return shopRuntime.getPetShopItems(board);
 }
 
 function getScoreShopItems(board) {
-  return getShopItems(board).filter((item) => !isPetShopEffectType(item.effectType));
+  return shopRuntime.getScoreShopItems(board);
 }
 
 function reopenPetShopLater() {
-  window.setTimeout(() => {
-    if (getSelectedStudent()) {
-      openPetShopModal();
-    }
-  }, 0);
+  return shopRuntime.reopenPetShopLater();
 }
 
 function purchaseShopItem(itemId) {
-  const board = getActiveBoard();
-  const student = getSelectedStudent();
-  const item = getScoreShopItems(board).find((shopItem) => shopItem.id === itemId);
-  if (!board || !student || !item) {
-    showToast('当前学生或商品不存在。');
-    return;
-  }
-  if (item.enabled === false) {
-    showToast('该商品当前已下架。');
-    return;
-  }
-  if (student.score < item.cost) {
-    showToast('积分不足，无法兑换。');
-    return;
-  }
-
-  changeStudentScore(student, -item.cost, `积分兑换：${item.name}`, '积分商城');
-  updateStudentInventory(student, item.id, 1);
-  commitState(`${student.name} 已在积分商城兑换 ${item.name}。`);
-  reopenShopLater();
+  return shopRuntime.purchaseShopItem(itemId);
 }
 
 function purchasePetShopItem(itemId) {
-  const board = getActiveBoard();
-  const student = getSelectedStudent();
-  const item = getPetShopItems(board).find((shopItem) => shopItem.id === itemId);
-  if (!board || !student || !item) {
-    showToast('当前学生或宠物商品不存在。');
-    return;
-  }
-  if (item.enabled === false) {
-    showToast('该商品当前已下架。');
-    return;
-  }
-  if (student.score < item.cost) {
-    showToast('积分不足，无法兑换。');
-    return;
-  }
-
-  changeStudentScore(student, -item.cost, `宠物兑换：${item.name}`, '宠物商城');
-  if (item.effectType === 'pet-egg') {
-    if (!student.petCollection || typeof student.petCollection !== 'object') {
-      student.petCollection = createDefaultPetCollection();
-    }
-    student.petCollection.incubatingEggs.push(createIncubatingEgg(item.id));
-    commitState(`${student.name} 已兑换 ${item.name}，并直接放入孵化仓。`);
-    reopenPetHomeLater();
-    return;
-  }
-
-  updateStudentInventory(student, item.id, 1);
-  commitState(`${student.name} 已在宠物商城兑换 ${item.name}。`);
-  reopenPetShopLater();
+  return shopRuntime.purchasePetShopItem(itemId);
 }
 
 function openShopModal() {
-  const board = getActiveBoard();
-  const student = getSelectedStudent();
-  if (!board || !student) {
-    showToast('请先选中学生，再打开积分商城。');
-    return;
-  }
-
-  openModal({
-    title: '积分商城',
-    hideSubmit: true,
-    cancelText: '关闭',
-    html: renderShopModal(board, student),
-    onOpen: (body) => {
-      const handleClick = (event) => {
-        const actionNode = event.target.closest('[data-action]');
-        const action = actionNode?.dataset.action;
-        const itemId = actionNode?.dataset.itemId || '';
-        if (!action) {
-          return;
-        }
-
-        if (action === 'buy-shop-item') {
-          purchaseShopItem(itemId);
-          return;
-        }
-        if (action === 'edit-shop-rules') {
-          openShopEditorModal();
-          return;
-        }
-        if (action === 'open-pet-shop') {
-          openPetShopModal();
-        }
-      };
-
-      body.addEventListener('click', handleClick);
-      return () => {
-        body.removeEventListener('click', handleClick);
-      };
-    }
-  });
+  return shopRuntime.openShopModal();
 }
 
 function renderPetShopModal(board, student) {
-  const petItems = getPetShopItems(board);
-  const eggItems = petItems.filter((item) => item.effectType === 'pet-egg');
-  const supplyItems = petItems.filter((item) => item.effectType !== 'pet-egg');
-  const incubatingEggs = getIncubatingEggs(student);
-  const pets = getStudentPets(student);
-
-  return `
-    <div class="pet-modal-toolbar">
-      <button class="mini-action mini-action-green" type="button" data-action="open-pet-home">宠物家园</button>
-      <button class="mini-action" type="button" data-action="open-score-shop">积分商城</button>
-      <button class="mini-action" type="button" data-action="edit-shop-rules">编辑商城规则</button>
-    </div>
-    <section class="pet-student-summary">
-      <div>
-        <p class="card-kicker">宠物商城</p>
-        <h3>${escapeHtml(student.name)}</h3>
-        <p class="modal-help">宠物蛋会在购买后直接放入孵化仓；零食和复活币会进入宠物背包。</p>
-      </div>
-      <div class="shop-score-pill ${scoreTone(student.score)}">${formatSignedScore(student.score)}</div>
-    </section>
-    <section class="modal-panel">
-      <h3>孵化与成长</h3>
-      <div class="preview-tag-row">
-        <span class="preview-tag">宠物 ${pets.length} 只</span>
-        <span class="preview-tag">孵化仓 ${incubatingEggs.length} 枚</span>
-        <span class="preview-tag">零食 ${getFeedableItems(board, student).reduce((sum, item) => sum + item.count, 0)} 份</span>
-        <span class="preview-tag">复活币 ${getReviveItems(board, student).reduce((sum, item) => sum + item.count, 0)} 枚</span>
-      </div>
-    </section>
-    <section class="modal-panel">
-      <h3>宠物蛋</h3>
-      ${eggItems.length > 0 ? `
-        <div class="shop-grid">
-          ${eggItems.map((item) => {
-            const canBuy = item.enabled !== false && student.score >= item.cost;
-            return `
-              <article class="shop-card ${item.enabled === false ? 'is-disabled' : ''}">
-                <div class="shop-card-top">
-                  <span class="shop-card-icon">${escapeHtml(item.icon || getDefaultShopIcon(item.effectType))}</span>
-                  <div>
-                    <strong>${escapeHtml(item.name)}</strong>
-                    <small>${escapeHtml(getShopEffectTypeLabel(item.effectType))} · 默认孵化 7 天</small>
-                  </div>
-                </div>
-                <p class="modal-help">${escapeHtml(item.description || '购买后直接进入孵化仓，可用积分继续加速。')}</p>
-                <div class="shop-card-bottom">
-                  <div class="preview-tag-row">
-                    <span class="preview-tag">需要 ${item.cost} 积分</span>
-                    <span class="preview-tag">购买后直接孵化</span>
-                  </div>
-                  <button class="mini-action ${canBuy ? 'mini-action-orange' : ''}" type="button" data-action="buy-pet-shop-item" data-item-id="${item.id}" ${canBuy ? '' : 'disabled'}>
-                    ${item.enabled === false ? '已下架' : student.score < item.cost ? '积分不足' : '兑换并入仓'}
-                  </button>
-                </div>
-              </article>
-            `;
-          }).join('')}
-        </div>
-      ` : '<div class="empty-state">当前没有上架宠物蛋商品。</div>'}
-    </section>
-    <section class="modal-panel">
-      <h3>零食与复活</h3>
-      ${supplyItems.length > 0 ? `
-        <div class="shop-grid">
-          ${supplyItems.map((item) => {
-            const ownedCount = getStudentInventoryCount(student, item.id);
-            const canBuy = item.enabled !== false && student.score >= item.cost;
-            return `
-              <article class="shop-card ${item.enabled === false ? 'is-disabled' : ''}">
-                <div class="shop-card-top">
-                  <span class="shop-card-icon">${escapeHtml(item.icon || getDefaultShopIcon(item.effectType))}</span>
-                  <div>
-                    <strong>${escapeHtml(item.name)}</strong>
-                    <small>${escapeHtml(getShopEffectTypeLabel(item.effectType))}${item.effectType === 'snack' ? ` · 成长 +${item.growthGain}` : ''}</small>
-                  </div>
-                </div>
-                <p class="modal-help">${escapeHtml(item.description || '兑换后进入宠物背包。')}</p>
-                <div class="shop-card-bottom">
-                  <div class="preview-tag-row">
-                    <span class="preview-tag">需要 ${item.cost} 积分</span>
-                    <span class="preview-tag">已拥有 ${ownedCount}</span>
-                  </div>
-                  <button class="mini-action ${canBuy ? 'mini-action-orange' : ''}" type="button" data-action="buy-pet-shop-item" data-item-id="${item.id}" ${canBuy ? '' : 'disabled'}>
-                    ${item.enabled === false ? '已下架' : student.score < item.cost ? '积分不足' : '兑换到背包'}
-                  </button>
-                </div>
-              </article>
-            `;
-          }).join('')}
-        </div>
-      ` : '<div class="empty-state">当前没有上架宠物补给商品。</div>'}
-    </section>
-  `;
+  return shopRuntime.renderPetShopModal(board, student);
 }
 
 function openPetShopModal() {
-  const board = getActiveBoard();
-  const student = getSelectedStudent();
-  if (!board || !student) {
-    showToast('请先选中学生，再打开宠物商城。');
-    return;
-  }
-
-  openModal({
-    title: '宠物商城',
-    hideSubmit: true,
-    cancelText: '关闭',
-    html: renderPetShopModal(board, student),
-    onOpen: (body) => {
-      const handleClick = (event) => {
-        const actionNode = event.target.closest('[data-action]');
-        const action = actionNode?.dataset.action;
-        const itemId = actionNode?.dataset.itemId || '';
-        if (!action) {
-          return;
-        }
-
-        if (action === 'buy-pet-shop-item') {
-          purchasePetShopItem(itemId);
-          return;
-        }
-        if (action === 'open-pet-home') {
-          openPetHomeModal();
-          return;
-        }
-        if (action === 'open-score-shop') {
-          openShopModal();
-          return;
-        }
-        if (action === 'edit-shop-rules') {
-          openShopEditorModal();
-        }
-      };
-
-      body.addEventListener('click', handleClick);
-      return () => {
-        body.removeEventListener('click', handleClick);
-      };
-    }
-  });
+  return shopRuntime.openPetShopModal();
 }
 
 function renderIncubatingEggCards(student) {
@@ -4083,51 +3886,7 @@ function renderPetSpeciesShowcase() {
 }
 
 function renderShopModal(board, student) {
-  const pets = getStudentPets(student);
-  const eggCount = getStudentEggCount(board, student);
-  const shopItems = getShopItems(board);
-
-  return `
-    <div class="pet-modal-toolbar">
-      <button class="mini-action mini-action-green" type="button" data-action="open-pet-home">宠物家园</button>
-      <button class="mini-action" type="button" data-action="edit-shop-rules">编辑商城规则</button>
-    </div>
-    <section class="pet-student-summary">
-      <div>
-        <p class="card-kicker">当前学生</p>
-        <h3>${escapeHtml(student.name)}</h3>
-        <p class="modal-help">当前积分 ${formatSignedScore(student.score)} · 已拥有 ${pets.length} 只宠物 · 宠物蛋 ${eggCount} 枚</p>
-      </div>
-      <div class="shop-score-pill ${scoreTone(student.score)}">${formatSignedScore(student.score)}</div>
-    </section>
-    <div class="shop-grid">
-      ${shopItems.map((item) => {
-        const ownedCount = getStudentInventoryCount(student, item.id);
-        const canBuy = item.enabled !== false && student.score >= item.cost;
-        return `
-          <article class="shop-card ${item.enabled === false ? 'is-disabled' : ''}">
-            <div class="shop-card-top">
-              <span class="shop-card-icon">${escapeHtml(item.icon || getDefaultShopIcon(item.effectType))}</span>
-              <div>
-                <strong>${escapeHtml(item.name)}</strong>
-                <small>${escapeHtml(getShopEffectTypeLabel(item.effectType))}${item.effectType === 'snack' ? ` · 成长 +${item.growthGain}` : ''}</small>
-              </div>
-            </div>
-            <p class="modal-help">${escapeHtml(item.description || '可在积分商城中兑换。')}</p>
-            <div class="shop-card-bottom">
-              <div class="preview-tag-row">
-                <span class="preview-tag">需要 ${item.cost} 积分</span>
-                <span class="preview-tag">已拥有 ${ownedCount}</span>
-              </div>
-              <button class="mini-action ${canBuy ? 'mini-action-orange' : ''}" type="button" data-action="buy-shop-item" data-item-id="${item.id}" ${canBuy ? '' : 'disabled'}>
-                ${item.enabled === false ? '已下架' : student.score < item.cost ? '积分不足' : '立即兑换'}
-              </button>
-            </div>
-          </article>
-        `;
-      }).join('')}
-    </div>
-  `;
+  return shopRuntime.renderShopModal(board, student);
 }
 
 function renderShopEditorModal(board) {
@@ -5964,212 +5723,7 @@ function playFinishTone() {
 }
 
 function renderPetAvatarMarkup(speciesId, label = '') {
-  const species = getPetSpecies(speciesId);
-  let figure = '';
-
-  if (species.id === 'cloud-corgi') {
-    figure = `
-      <ellipse cx="110" cy="144" rx="54" ry="42" fill="#fff8ef" />
-      <ellipse cx="110" cy="104" rx="58" ry="50" fill="#ffd5a6" />
-      <path d="M68 68 L86 34 L102 74 Z" fill="#f19945" />
-      <path d="M152 68 L134 34 L118 74 Z" fill="#f19945" />
-      <ellipse cx="88" cy="112" rx="15" ry="18" fill="#2b3a57" />
-      <ellipse cx="132" cy="112" rx="15" ry="18" fill="#2b3a57" />
-      <ellipse cx="110" cy="126" rx="20" ry="14" fill="#fffdf7" />
-      <ellipse cx="110" cy="119" rx="8" ry="6" fill="#2b3a57" />
-      <path d="M103 132 Q110 140 117 132" stroke="#2b3a57" stroke-width="5" stroke-linecap="round" fill="none" />
-      <ellipse cx="78" cy="126" rx="8" ry="5" fill="#ffb1aa" />
-      <ellipse cx="142" cy="126" rx="8" ry="5" fill="#ffb1aa" />
-      <ellipse cx="86" cy="171" rx="11" ry="18" fill="#fff8ef" />
-      <ellipse cx="134" cy="171" rx="11" ry="18" fill="#fff8ef" />
-      <path d="M163 145 Q181 138 182 154 Q180 170 160 164" fill="#ffd5a6" />
-    `;
-  } else if (species.id === 'star-bunny') {
-    figure = `
-      <ellipse cx="110" cy="146" rx="48" ry="40" fill="#fff3fc" />
-      <ellipse cx="110" cy="106" rx="52" ry="46" fill="#ffd4ea" />
-      <ellipse cx="84" cy="54" rx="14" ry="40" fill="#ffd4ea" />
-      <ellipse cx="136" cy="54" rx="14" ry="40" fill="#ffd4ea" />
-      <ellipse cx="84" cy="56" rx="7" ry="26" fill="#fff3fc" />
-      <ellipse cx="136" cy="56" rx="7" ry="26" fill="#fff3fc" />
-      <ellipse cx="90" cy="108" rx="13" ry="16" fill="#3b2f6f" />
-      <ellipse cx="130" cy="108" rx="13" ry="16" fill="#3b2f6f" />
-      <path d="M103 122 Q110 128 117 122" stroke="#3b2f6f" stroke-width="5" stroke-linecap="round" fill="none" />
-      <circle cx="82" cy="124" r="7" fill="#ffaacd" />
-      <circle cx="138" cy="124" r="7" fill="#ffaacd" />
-      <path d="M110 137 L116 150 L130 150 L119 158 L123 172 L110 164 L97 172 L101 158 L90 150 L104 150 Z" fill="#fff3a6" />
-      <circle cx="156" cy="58" r="8" fill="#fff1a0" />
-      <path d="M48 69 L52 77 L61 78 L54 84 L56 93 L48 88 L40 93 L42 84 L35 78 L44 77 Z" fill="#fff7c3" />
-    `;
-  } else if (species.id === 'mint-dragon') {
-    figure = `
-      <ellipse cx="110" cy="142" rx="50" ry="44" fill="#effff9" />
-      <ellipse cx="110" cy="102" rx="52" ry="46" fill="#b9f2dd" />
-      <path d="M74 116 Q36 104 44 76 Q68 76 84 102" fill="#8be0c0" />
-      <path d="M146 116 Q184 104 176 76 Q152 76 136 102" fill="#8be0c0" />
-      <path d="M82 58 L90 40 L102 63" fill="#5dbd97" />
-      <path d="M138 58 L130 40 L118 63" fill="#5dbd97" />
-      <ellipse cx="92" cy="106" rx="13" ry="16" fill="#24624d" />
-      <ellipse cx="128" cy="106" rx="13" ry="16" fill="#24624d" />
-      <ellipse cx="110" cy="121" rx="11" ry="8" fill="#24624d" />
-      <path d="M101 135 Q110 144 119 135" stroke="#24624d" stroke-width="5" stroke-linecap="round" fill="none" />
-      <path d="M152 154 Q180 158 180 178 Q156 184 146 164" fill="#9ce8cb" />
-      <circle cx="74" cy="128" r="6" fill="#7de3bf" />
-      <circle cx="146" cy="128" r="6" fill="#7de3bf" />
-    `;
-  } else if (species.id === 'moon-cat') {
-    figure = `
-      <ellipse cx="110" cy="146" rx="48" ry="40" fill="#f7f4ff" />
-      <ellipse cx="110" cy="106" rx="52" ry="46" fill="#d8d0ff" />
-      <path d="M72 70 L90 38 L100 74 Z" fill="#7c69e8" />
-      <path d="M148 70 L130 38 L120 74 Z" fill="#7c69e8" />
-      <ellipse cx="92" cy="106" rx="13" ry="18" fill="#2d2456" />
-      <ellipse cx="128" cy="106" rx="13" ry="18" fill="#2d2456" />
-      <circle cx="92" cy="104" r="4" fill="#ffffff" />
-      <circle cx="128" cy="104" r="4" fill="#ffffff" />
-      <ellipse cx="110" cy="121" rx="9" ry="6" fill="#2d2456" />
-      <path d="M103 134 Q110 142 117 134" stroke="#2d2456" stroke-width="5" stroke-linecap="round" fill="none" />
-      <path d="M154 146 Q188 142 182 178 Q150 182 146 158" fill="#cfc7ff" />
-      <circle cx="160" cy="56" r="16" fill="#fff6a8" />
-      <circle cx="166" cy="54" r="14" fill="${species.accentSoft}" />
-    `;
-  } else if (species.id === 'peach-panda') {
-    figure = `
-      <ellipse cx="110" cy="146" rx="52" ry="42" fill="#fff7f8" />
-      <ellipse cx="110" cy="106" rx="50" ry="44" fill="#ffffff" />
-      <circle cx="80" cy="72" r="16" fill="#2e3048" />
-      <circle cx="140" cy="72" r="16" fill="#2e3048" />
-      <ellipse cx="90" cy="110" rx="14" ry="18" fill="#2e3048" />
-      <ellipse cx="130" cy="110" rx="14" ry="18" fill="#2e3048" />
-      <ellipse cx="110" cy="126" rx="18" ry="14" fill="#fff1f3" />
-      <ellipse cx="110" cy="121" rx="7" ry="6" fill="#2e3048" />
-      <path d="M102 136 Q110 146 118 136" stroke="#2e3048" stroke-width="5" stroke-linecap="round" fill="none" />
-      <circle cx="78" cy="126" r="7" fill="#ffb5c0" />
-      <circle cx="142" cy="126" r="7" fill="#ffb5c0" />
-      <path d="M156 148 Q184 148 182 174 Q158 180 148 160" fill="#ffd6dc" />
-      <path d="M110 148 C126 133 144 148 142 166 C140 181 122 188 110 198 C98 188 80 181 78 166 C76 148 94 133 110 148 Z" fill="#ff97a4" opacity="0.8" />
-    `;
-  } else if (species.id === 'azure-qilin') {
-    figure = `
-      <path d="M58 150 Q88 96 142 98 Q170 100 174 128 Q174 164 140 172 Q96 184 58 150 Z" fill="#effcff" />
-      <path d="M78 92 Q96 46 114 62 Q126 48 144 92" fill="#b5ecff" />
-      <path d="M84 84 L72 50 L94 72" fill="#1f91cc" />
-      <path d="M136 84 L148 50 L126 72" fill="#1f91cc" />
-      <path d="M154 138 Q184 136 184 164 Q160 170 148 152" fill="#9fe4ff" />
-      <path d="M72 146 Q96 176 128 178" stroke="#60cfff" stroke-width="10" stroke-linecap="round" fill="none" />
-      <ellipse cx="94" cy="112" rx="12" ry="15" fill="#1d4c72" />
-      <ellipse cx="132" cy="112" rx="12" ry="15" fill="#1d4c72" />
-      <circle cx="94" cy="108" r="4" fill="#ffffff" />
-      <circle cx="132" cy="108" r="4" fill="#ffffff" />
-      <ellipse cx="112" cy="126" rx="10" ry="6" fill="#1d4c72" />
-      <path d="M104 136 Q112 144 120 136" stroke="#1d4c72" stroke-width="5" stroke-linecap="round" fill="none" />
-      <circle cx="62" cy="70" r="8" fill="#ffffff" opacity="0.86" />
-      <circle cx="160" cy="62" r="10" fill="#d9f9ff" opacity="0.76" />
-    `;
-  } else if (species.id === 'sun-phoenix') {
-    figure = `
-      <path d="M110 50 Q134 66 138 98 Q168 102 176 130 Q178 164 110 180 Q42 164 44 130 Q52 102 82 98 Q86 66 110 50 Z" fill="#fff6ef" />
-      <path d="M110 32 L124 60 L110 54 L96 60 Z" fill="#ff8c5a" />
-      <path d="M86 70 Q60 54 58 26 Q84 38 96 62" fill="#ffb056" />
-      <path d="M134 70 Q160 54 162 26 Q136 38 124 62" fill="#ffb056" />
-      <path d="M76 122 Q38 118 26 86 Q58 90 86 108" fill="#ff9a49" />
-      <path d="M144 122 Q182 118 194 86 Q162 90 134 108" fill="#ff9a49" />
-      <ellipse cx="92" cy="110" rx="12" ry="16" fill="#65321d" />
-      <ellipse cx="128" cy="110" rx="12" ry="16" fill="#65321d" />
-      <circle cx="92" cy="106" r="4" fill="#ffffff" />
-      <circle cx="128" cy="106" r="4" fill="#ffffff" />
-      <path d="M110 122 L120 132 L110 136 L100 132 Z" fill="#f3792d" />
-      <path d="M102 142 Q110 148 118 142" stroke="#65321d" stroke-width="5" stroke-linecap="round" fill="none" />
-      <path d="M110 150 Q132 170 154 188" stroke="#ff8c5a" stroke-width="9" stroke-linecap="round" fill="none" />
-      <circle cx="54" cy="56" r="8" fill="#ffe29b" />
-      <circle cx="166" cy="48" r="12" fill="#ffd067" opacity="0.8" />
-    `;
-  } else if (species.id === 'void-basilisk') {
-    figure = `
-      <path d="M46 150 Q72 92 136 92 Q168 92 178 122 Q180 154 150 168 Q120 182 74 176" fill="#f5f0ff" />
-      <path d="M78 90 Q86 44 116 54 Q146 46 154 88" fill="#9b87ff" />
-      <path d="M76 92 L60 60 L88 72" fill="#5d47c7" />
-      <path d="M148 92 L164 60 L136 72" fill="#5d47c7" />
-      <ellipse cx="92" cy="112" rx="12" ry="16" fill="#24174d" />
-      <ellipse cx="128" cy="112" rx="12" ry="16" fill="#24174d" />
-      <circle cx="92" cy="110" r="4" fill="#ffffff" />
-      <circle cx="128" cy="110" r="4" fill="#ffffff" />
-      <path d="M104 128 Q110 134 116 128" stroke="#24174d" stroke-width="4" stroke-linecap="round" fill="none" />
-      <path d="M150 148 Q184 148 192 176 Q162 176 144 158" fill="#bba8ff" />
-      <path d="M72 154 Q36 168 32 194 Q64 188 88 166" fill="#8b74ff" opacity="0.82" />
-      <circle cx="60" cy="66" r="10" fill="#ffffff" opacity="0.24" />
-    `;
-  } else if (species.id === 'ender-sprite') {
-    figure = `
-      <path d="M110 46 Q148 66 154 110 Q164 160 110 176 Q56 160 66 110 Q72 66 110 46 Z" fill="#f7f2ff" />
-      <path d="M76 82 Q48 72 38 44 Q72 52 90 74" fill="#8d6dff" />
-      <path d="M144 82 Q172 72 182 44 Q148 52 130 74" fill="#8d6dff" />
-      <ellipse cx="92" cy="108" rx="11" ry="16" fill="#261a4e" />
-      <ellipse cx="128" cy="108" rx="11" ry="16" fill="#261a4e" />
-      <circle cx="92" cy="108" r="4" fill="#8fd5ff" />
-      <circle cx="128" cy="108" r="4" fill="#8fd5ff" />
-      <ellipse cx="110" cy="126" rx="8" ry="6" fill="#261a4e" />
-      <path d="M103 138 Q110 146 117 138" stroke="#261a4e" stroke-width="5" stroke-linecap="round" fill="none" />
-      <path d="M62 154 L78 136 L86 154 L70 168 Z" fill="#a48cff" opacity="0.86" />
-      <path d="M158 154 L142 136 L134 154 L150 168 Z" fill="#a48cff" opacity="0.86" />
-      <circle cx="58" cy="70" r="6" fill="#8fd5ff" opacity="0.7" />
-      <circle cx="164" cy="66" r="6" fill="#8fd5ff" opacity="0.7" />
-    `;
-  } else if (species.id === 'slime-cub') {
-    figure = `
-      <path d="M58 160 Q58 84 110 78 Q162 84 162 160 Q162 182 110 186 Q58 182 58 160 Z" fill="#76ec8b" />
-      <path d="M72 96 Q110 54 148 96" fill="#4cc965" opacity="0.8" />
-      <ellipse cx="92" cy="120" rx="12" ry="15" fill="#1f5c30" />
-      <ellipse cx="128" cy="120" rx="12" ry="15" fill="#1f5c30" />
-      <circle cx="92" cy="118" r="4" fill="#ffffff" />
-      <circle cx="128" cy="118" r="4" fill="#ffffff" />
-      <path d="M98 142 Q110 154 122 142" stroke="#1f5c30" stroke-width="5" stroke-linecap="round" fill="none" />
-      <circle cx="72" cy="166" r="8" fill="#b7ffbf" opacity="0.72" />
-      <circle cx="148" cy="166" r="8" fill="#b7ffbf" opacity="0.72" />
-    `;
-  } else if (species.id === 'warden-cub') {
-    figure = `
-      <path d="M58 150 Q60 92 110 82 Q160 92 162 150 Q162 176 110 186 Q58 176 58 150 Z" fill="#eafdfd" />
-      <path d="M70 96 Q52 74 54 52 Q82 60 92 86" fill="#2fc7c9" />
-      <path d="M150 96 Q168 74 166 52 Q138 60 128 86" fill="#2fc7c9" />
-      <ellipse cx="92" cy="118" rx="12" ry="15" fill="#143c43" />
-      <ellipse cx="128" cy="118" rx="12" ry="15" fill="#143c43" />
-      <circle cx="92" cy="118" r="4" fill="#7cf4ff" />
-      <circle cx="128" cy="118" r="4" fill="#7cf4ff" />
-      <path d="M102 138 Q110 146 118 138" stroke="#143c43" stroke-width="5" stroke-linecap="round" fill="none" />
-      <path d="M76 150 Q92 170 110 170 Q128 170 144 150" stroke="#26aeb1" stroke-width="10" stroke-linecap="round" fill="none" />
-      <circle cx="50" cy="122" r="7" fill="#7cf4ff" opacity="0.74" />
-      <circle cx="170" cy="122" r="7" fill="#7cf4ff" opacity="0.74" />
-    `;
-  } else {
-    figure = `
-      <ellipse cx="110" cy="146" rx="50" ry="42" fill="#fff5f5" />
-      <ellipse cx="110" cy="106" rx="52" ry="46" fill="#ffe2e6" />
-      <circle cx="82" cy="72" r="16" fill="#2f3547" />
-      <circle cx="138" cy="72" r="16" fill="#2f3547" />
-      <circle cx="89" cy="108" r="13" fill="#2f3547" />
-      <circle cx="131" cy="108" r="13" fill="#2f3547" />
-      <circle cx="89" cy="104" r="4" fill="#ffffff" />
-      <circle cx="131" cy="104" r="4" fill="#ffffff" />
-      <ellipse cx="110" cy="120" rx="10" ry="7" fill="#2f3547" />
-      <path d="M101 134 Q110 145 119 134" stroke="#2f3547" stroke-width="5" stroke-linecap="round" fill="none" />
-      <circle cx="80" cy="126" r="7" fill="#ffb8c3" />
-      <circle cx="140" cy="126" r="7" fill="#ffb8c3" />
-      <path d="M110 147 C126 133 144 148 142 166 C140 181 122 188 110 198 C98 188 80 181 78 166 C76 148 94 133 110 147 Z" fill="#ff97a4" opacity="0.86" />
-    `;
-  }
-
-  return `
-    <div class="pet-avatar-art" ${getPetThemeStyleAttribute(species.id)}>
-      <svg viewBox="0 0 220 220" class="pet-avatar-svg" role="img" aria-label="${escapeHtml(label || species.name)}">
-        <circle cx="110" cy="110" r="94" fill="${species.accentSoft}" />
-        <circle cx="58" cy="54" r="12" fill="#ffffff" opacity="0.76" />
-        <circle cx="165" cy="44" r="8" fill="#ffffff" opacity="0.66" />
-        <circle cx="178" cy="79" r="5" fill="#ffffff" opacity="0.72" />
-        ${figure}
-      </svg>
-    </div>
-  `;
+  return petRuntime.renderPetAvatarMarkup(speciesId, label);
 }
 
 function renderPetVitalBar(label, current, max, tone = 'hp') {
@@ -6261,141 +5815,7 @@ function renderPetCollectionCards(student) {
 }
 
 function renderPetBattleModal(board, student) {
-  const pet = getActivePet(student);
-  if (!pet) {
-    return `<section class="modal-panel"><div class="empty-state">当前还没有宠物，先去宠物家园孵化一只吧。</div></section>`;
-  }
-
-  const session = getPetBattleStateForRender(board, student, pet);
-  const playerPet = session.playerPet || createBattlePetSnapshot(pet);
-  const playerStats = getPetDerivedStats(playerPet);
-  const learnedSkills = getPetLearnedSkills(playerPet);
-  const reviveItems = getReviveItems(board, student);
-
-  if (session.status === 'lobby') {
-    return `
-      <div class="pet-modal-toolbar">
-        <button class="mini-action" type="button" data-action="battle-back-home">返回宠物家园</button>
-        <button class="mini-action" type="button" data-action="battle-open-shop">积分商城</button>
-      </div>
-      <section class="pet-hero-card" ${getPetThemeStyleAttribute(playerPet.speciesId)}>
-        <div class="pet-hero-main">
-          ${renderPetAvatarMarkup(playerPet.speciesId, playerPet.name)}
-          <div class="pet-hero-copy">
-            <p class="card-kicker">竞技场准备</p>
-            <h3>${escapeHtml(playerPet.name)}</h3>
-            <p class="modal-help">${escapeHtml(playerStats.species.name)} · ${escapeHtml(playerStats.species.rarity)} · Lv.${playerStats.level}</p>
-            <div class="pet-vital-grid">
-              <article class="pet-vital-card">
-                ${renderPetVitalBar('生命值', playerPet.currentHp, playerStats.maxHp, 'hp')}
-                ${renderPetVitalBar('蓝量', playerPet.currentMana, playerStats.maxMana, 'mana')}
-              </article>
-              <article class="pet-vital-card">
-                <div class="preview-tag-row">
-                  <span class="preview-tag">攻击 ${playerStats.attackMin}-${playerStats.attackMax}</span>
-                  <span class="preview-tag">防御 ${playerStats.defense}</span>
-                  <span class="preview-tag">暴击 ${Math.round(playerStats.critRate * 100)}%</span>
-                  <span class="preview-tag">闪避 ${Math.round(playerStats.dodgeRate * 100)}%</span>
-                </div>
-                <p class="modal-help">普通攻击会额外回复 6 点蓝量。已学技能 ${learnedSkills.length} 个${isPetDead(pet) ? '，当前宠物已倒下，需先复活。' : '。'}</p>
-                ${isPetDead(pet) ? `<div class="pet-dead-box"><strong>宠物当前已倒下</strong><small>请先在商城购买复活币，再回到宠物家园使用。</small><div class="preview-tag-row"><span class="preview-tag">现有复活币 ${reviveItems.reduce((sum, item) => sum + item.count, 0)}</span></div></div>` : ''}
-              </article>
-            </div>
-          </div>
-        </div>
-      </section>
-      <section class="modal-panel">
-        <h3>竞技场对手</h3>
-        <div class="pet-arena-grid">
-          ${PET_ARENA_OPPONENTS.map((opponent) => {
-            const arenaPet = createArenaPetFromTemplate(opponent, pet);
-            const arenaStats = getPetDerivedStats(arenaPet);
-            const arenaSpecies = getPetSpecies(opponent.speciesId);
-            return `
-              <article class="pet-arena-card" ${getPetThemeStyleAttribute(opponent.speciesId)}>
-                ${renderPetAvatarMarkup(opponent.speciesId, opponent.name)}
-                <strong>${escapeHtml(opponent.name)}</strong>
-                <small>${escapeHtml(arenaSpecies.name)} · ${escapeHtml(arenaSpecies.rarity)} · Lv.${arenaStats.level}</small>
-                <p class="modal-help">${escapeHtml(opponent.description)}</p>
-                <div class="preview-tag-row">
-                  <span class="preview-tag">成长奖励 +${opponent.rewardGrowth}</span>
-                  <span class="preview-tag">攻击 ${arenaStats.attackMin}-${arenaStats.attackMax}</span>
-                </div>
-                <button class="mini-action mini-action-orange" type="button" data-action="battle-start" data-opponent-id="${opponent.id}" ${isPetDead(pet) ? 'disabled' : ''}>开始挑战</button>
-              </article>
-            `;
-          }).join('')}
-        </div>
-      </section>
-      <section class="modal-panel">
-        <h3>已掌握技能</h3>
-        ${learnedSkills.length > 0 ? `<div class="pet-skill-grid">${learnedSkills.map((skill) => `<article class="pet-skill-card is-learned"><div class="pet-skill-head"><div><strong>${escapeHtml(skill.name)}</strong><small>MP ${skill.manaCost} · 伤害 ${skill.minDamage}-${skill.maxDamage}</small></div><span class="preview-tag">已装备</span></div><p class="modal-help">${escapeHtml(skill.description)}</p></article>`).join('')}</div>` : `<div class="empty-state">当前还没有学会技能，可以先回宠物家园用积分解锁技能。</div>`}
-      </section>
-    `;
-  }
-
-  const opponentPet = session.opponentPet;
-  const opponentStats = getPetDerivedStats(opponentPet);
-  const resultTitle = session.status === 'win' ? '战斗胜利' : session.status === 'loss' ? '战斗失败' : '';
-  const resultCopy = session.result
-    ? session.result.outcome === 'win'
-      ? `获得成长值 +${session.result.growthGain}${session.result.leveledUp ? `，并升到 Lv.${session.result.level}` : ''}。`
-      : isPetDead(pet) ? '宠物已经倒下，需要复活币才能再次出战。' : '战绩已记录，可以调整状态后再战。'
-    : '';
-
-  return `
-    <div class="pet-modal-toolbar">
-      <button class="mini-action" type="button" data-action="battle-back-home">返回宠物家园</button>
-      <button class="mini-action" type="button" data-action="battle-reset">${session.status === 'active' ? '重新匹配' : '再来一场'}</button>
-    </div>
-    ${(session.status === 'win' || session.status === 'loss') ? `<section class="pet-result-banner ${session.status === 'win' ? 'is-win' : 'is-loss'}"><strong>${resultTitle}</strong><small>${escapeHtml(resultCopy)}</small></section>` : ''}
-    <section class="pet-battle-shell">
-      <div class="pet-battle-stage">
-        <article class="pet-battle-card" ${getPetThemeStyleAttribute(playerPet.speciesId)}>
-          ${renderPetAvatarMarkup(playerPet.speciesId, playerPet.name)}
-          <div class="pet-battle-copy">
-            <strong>${escapeHtml(playerPet.name)}</strong>
-            <small>${escapeHtml(playerStats.species.name)} · Lv.${playerStats.level}</small>
-            ${renderPetVitalBar('生命值', playerPet.currentHp, playerStats.maxHp, 'hp')}
-            ${renderPetVitalBar('蓝量', playerPet.currentMana, playerStats.maxMana, 'mana')}
-            <div class="preview-tag-row">
-              <span class="preview-tag">攻击 ${playerStats.attackMin}-${playerStats.attackMax}</span>
-              <span class="preview-tag">防御 ${playerStats.defense}</span>
-            </div>
-          </div>
-        </article>
-        <article class="pet-battle-card" ${getPetThemeStyleAttribute(opponentPet.speciesId)}>
-          ${renderPetAvatarMarkup(opponentPet.speciesId, opponentPet.name)}
-          <div class="pet-battle-copy">
-            <strong>${escapeHtml(opponentPet.name)}</strong>
-            <small>${escapeHtml(opponentStats.species.name)} · Lv.${opponentStats.level}</small>
-            ${renderPetVitalBar('生命值', opponentPet.currentHp, opponentStats.maxHp, 'hp')}
-            ${renderPetVitalBar('蓝量', opponentPet.currentMana, opponentStats.maxMana, 'mana')}
-            <div class="preview-tag-row">
-              <span class="preview-tag">攻击 ${opponentStats.attackMin}-${opponentStats.attackMax}</span>
-              <span class="preview-tag">防御 ${opponentStats.defense}</span>
-            </div>
-          </div>
-        </article>
-      </div>
-      <section class="modal-panel">
-        <h3>战斗操作</h3>
-        ${session.status === 'active' ? `
-          <div class="pet-battle-actions">
-            <button class="mini-action mini-action-green" type="button" data-action="battle-attack">普通攻击</button>
-          </div>
-          <p class="modal-help">普通攻击会回复 6 点蓝量；技能会消耗蓝量并触发额外效果。</p>
-          ${learnedSkills.length > 0 ? `<div class="pet-skill-grid">${learnedSkills.map((skill) => `<article class="pet-skill-card ${playerPet.currentMana >= skill.manaCost ? 'is-learned' : 'is-locked'}"><div class="pet-skill-head"><div><strong>${escapeHtml(skill.name)}</strong><small>MP ${skill.manaCost} · 伤害 ${skill.minDamage}-${skill.maxDamage}</small></div><span class="preview-tag">${playerPet.currentMana >= skill.manaCost ? '可释放' : '蓝量不足'}</span></div><p class="modal-help">${escapeHtml(skill.description)}</p><button class="mini-action mini-action-orange" type="button" data-action="battle-skill" data-skill-id="${skill.id}" ${playerPet.currentMana >= skill.manaCost ? '' : 'disabled'}>释放技能</button></article>`).join('')}</div>` : `<div class="empty-state">当前没有已学技能，本场可以先用普通攻击完成对战。</div>`}
-        ` : `<div class="empty-state">本场战斗已经结算，可以返回家园调整状态，或重新匹配下一场。</div>`}
-      </section>
-      <section class="modal-panel">
-        <h3>战斗日志</h3>
-        <div class="battle-log">
-          ${session.log.map((entry) => `<article class="battle-log-item tone-${escapeHtml(entry.tone || 'neutral')}">${escapeHtml(entry.text)}</article>`).join('')}
-        </div>
-      </section>
-    </section>
-  `;
+  return petRuntime.renderPetBattleModal(board, student);
 }
 
 function feedActivePet(itemId) {
@@ -6432,89 +5852,7 @@ function feedActivePet(itemId) {
 }
 
 function openPetBattleModal() {
-  const board = getActiveBoard();
-  const student = getSelectedStudent();
-  const pet = getActivePet(student);
-  if (!board || !student || !pet) {
-    showToast('请先选中学生并拥有一只宠物。');
-    return;
-  }
-
-  petBattleState = ensurePetBattleState(board, student, pet);
-  openModal({
-    title: '宠物对战',
-    hideSubmit: true,
-    cancelText: '关闭',
-    html: renderPetBattleModal(board, student),
-    onOpen: (body) => {
-      const rerender = () => {
-        const freshBoard = getActiveBoard();
-        const freshStudent = getSelectedStudent();
-        if (!freshBoard || !freshStudent) {
-          return;
-        }
-        body.innerHTML = renderPetBattleModal(freshBoard, freshStudent);
-      };
-
-      const handleClick = (event) => {
-        const actionNode = event.target.closest('[data-action]');
-        const action = actionNode?.dataset.action;
-        const opponentId = actionNode?.dataset.opponentId || '';
-        const skillId = actionNode?.dataset.skillId || '';
-        if (!action) {
-          return;
-        }
-
-        if (action === 'battle-back-home') {
-          petBattleState = null;
-          openPetHomeModal();
-          return;
-        }
-
-        if (action === 'battle-open-shop') {
-          openShopModal();
-          return;
-        }
-
-        if (action === 'battle-start') {
-          if (startPetBattleChallenge(opponentId)) {
-            rerender();
-          }
-          return;
-        }
-
-        if (action === 'battle-attack') {
-          if (performPetBattleRound('normal')) {
-            rerender();
-          }
-          return;
-        }
-
-        if (action === 'battle-skill') {
-          if (performPetBattleRound('skill', skillId)) {
-            rerender();
-          }
-          return;
-        }
-
-        if (action === 'battle-reset') {
-          const freshBoard = getActiveBoard();
-          const freshStudent = getSelectedStudent();
-          const freshPet = getActivePet(freshStudent);
-          if (!freshBoard || !freshStudent || !freshPet) {
-            return;
-          }
-          petBattleState = createPetBattleLobby(freshBoard, freshStudent, freshPet);
-          rerender();
-        }
-      };
-
-      body.addEventListener('click', handleClick);
-      return () => {
-        body.removeEventListener('click', handleClick);
-      };
-    }
-  });
+  return petRuntime.openPetBattleModal();
 }
 
 function openModal(config) {
@@ -7271,283 +6609,14 @@ function applyQuickAdjust() {
 }
 
 function purchaseAndReviveActivePet() {
-  const board = getActiveBoard();
-  const student = getSelectedStudent();
-  const pet = getActivePet(student);
-  if (!board || !student || !pet) {
-    showToast('请先选中学生与宠物。');
-    return;
-  }
-
-  if (!isPetDead(pet)) {
-    showToast('宠物当前无需复活。');
-    return;
-  }
-
-  const reviveItems = getReviveItems(board, student);
-  if (reviveItems.length > 0) {
-    reviveActivePet(reviveItems[0].id);
-    return;
-  }
-
-  const reviveRule = getShopItems(board).find((item) => item.effectType === 'revive');
-  if (!reviveRule || reviveRule.enabled === false) {
-    showToast('当前商城没有上架复活币。');
-    return;
-  }
-
-  if (!spendStudentPoints(student, reviveRule.cost, `购买${reviveRule.name}`, '宠物复活')) {
-    showToast(`积分不足，无法购买${reviveRule.name}。`);
-    return;
-  }
-
-  updateStudentInventory(student, reviveRule.id, 1);
-  updateStudentInventory(student, reviveRule.id, -1);
-  syncPetVitals(pet, { revive: true });
-  commitState(`${activePetName(student)} 已花费 ${reviveRule.cost} 积分购买并立即使用${reviveRule.name}。`);
-  reopenPetHomeLater();
+  return petRuntime.purchaseAndReviveActivePet();
 }
 
 function renderPetHomeModal(board, student) {
-  const pets = getStudentPets(student);
-  const activePet = getActivePet(student);
-  const eggRule = getPetEggShopItem(board);
-  const eggItems = getBackpackItems(board, student).filter((item) => item.effectType === 'pet-egg');
-  const incubatingEggs = getIncubatingEggs(student);
-  const feedItems = getFeedableItems(board, student);
-  const reviveItems = getReviveItems(board, student);
-  const backpackItems = getBackpackItems(board, student);
-  const reviveRule = getShopItems(board).find((item) => item.effectType === 'revive') || null;
-  const reviveCount = reviveItems.reduce((sum, item) => sum + item.count, 0);
-
-  if (pets.length === 0 && eggItems.length === 0 && incubatingEggs.length === 0) {
-    return `
-      <div class="pet-modal-toolbar">
-        <button class="mini-action mini-action-orange" type="button" data-action="open-shop">去积分商城兑换宠物蛋</button>
-      </div>
-      <section class="pet-hero-card pet-locked-card">
-        <div>
-          <p class="card-kicker">宠物家园未开启</p>
-          <h3>${escapeHtml(student.name)} 还没有宠物蛋</h3>
-          <p class="modal-help">开启宠物家园前，需要先兑换一枚宠物蛋。宠物蛋会进入孵化仓，默认孵化 7 天，也可以用积分加速。</p>
-          <div class="preview-tag-row">
-            <span class="preview-tag">当前积分 ${formatSignedScore(student.score)}</span>
-            <span class="preview-tag">宠物蛋 ${eggRule?.cost || 100} 积分</span>
-            <span class="preview-tag">图鉴 ${ALL_PET_SPECIES.length} 种</span>
-          </div>
-        </div>
-        <div class="pet-empty-badge">🥚</div>
-      </section>
-      <section class="modal-panel">
-        <h3>宠物图鉴</h3>
-        <p class="modal-help">稀有度越高，基础属性越强，技能和战斗潜力也会更高。</p>
-        ${renderPetSpeciesShowcase()}
-      </section>
-    `;
-  }
-
-  if (pets.length === 0) {
-    return `
-      <div class="pet-modal-toolbar">
-        <button class="mini-action" type="button" data-action="open-shop">积分商城</button>
-      </div>
-      <section class="pet-hero-card pet-hatch-card">
-        <div>
-          <p class="card-kicker">孵化仓</p>
-          <h3>${escapeHtml(student.name)} 的宠物家园正在准备中</h3>
-          <p class="modal-help">待孵化宠物蛋 ${eggItems.reduce((sum, item) => sum + item.count, 0)} 枚，孵化仓中 ${incubatingEggs.length} 枚。默认孵化 7 天，每消耗 1 积分可减少 1 小时。</p>
-          <div class="preview-tag-row">
-            <span class="preview-tag">当前积分 ${formatSignedScore(student.score)}</span>
-            <span class="preview-tag">默认孵化 7 天</span>
-            <span class="preview-tag">1 积分 = 1 小时</span>
-          </div>
-        </div>
-        <div class="pet-empty-badge">⏳</div>
-      </section>
-      ${eggItems.length > 0 ? `<section class="modal-panel"><h3>待孵化宠物蛋</h3><div class="pet-feed-grid">${eggItems.map((item) => `<article class="shop-card"><div class="shop-card-top"><span class="shop-card-icon">${escapeHtml(item.icon || getDefaultShopIcon(item.effectType))}</span><div><strong>${escapeHtml(item.name)}</strong><small>库存 ${item.count}</small></div></div><p class="modal-help">放入孵化仓后开始倒计时，期间可随时加速。</p><button class="mini-action mini-action-green" type="button" data-action="start-egg-incubation" data-item-id="${item.id}">放入孵化仓</button></article>`).join('')}</div></section>` : ''}
-      ${incubatingEggs.length > 0 ? `<section class="modal-panel"><h3>孵化中的宠物蛋</h3><div class="pet-feed-grid">${renderIncubatingEggCards(student)}</div></section>` : ''}
-      <section class="modal-panel">
-        <h3>宠物图鉴</h3>
-        ${renderPetSpeciesShowcase()}
-      </section>
-    `;
-  }
-
-  const species = getPetSpecies(activePet.speciesId);
-  const progress = getPetProgress(activePet);
-  const stats = getPetDerivedStats(activePet);
-  const dead = isPetDead(activePet);
-  const autoReviveLabel = reviveCount > 0
-    ? `立即使用复活币（${reviveCount}）`
-    : `花费${reviveRule?.cost || 10}积分立即复活`;
-  const autoReviveHelp = reviveCount > 0
-    ? '将优先消耗背包里的复活币，并立即回满生命与蓝量。'
-    : `当前没有复活币，可直接花费 ${reviveRule?.cost || 10} 积分购买并自动使用。`;
-
-  return `
-    <div class="pet-modal-toolbar">
-      <button class="mini-action" type="button" data-action="open-shop">积分商城</button>
-      <button class="mini-action mini-action-green" type="button" data-action="open-pet-battle">宠物对战</button>
-      <button class="mini-action" type="button" data-action="rename-active-pet">重命名宠物</button>
-    </div>
-    <section class="pet-hero-card" ${getPetThemeStyleAttribute(species.id)}>
-      <div class="pet-hero-main">
-        ${renderPetAvatarMarkup(species.id, activePet.name)}
-        <div class="pet-hero-copy">
-          <p class="card-kicker">当前宠物</p>
-          <h3>${escapeHtml(activePet.name)}</h3>
-          <p class="modal-help">${escapeHtml(species.name)} · ${escapeHtml(species.rarity)} · ${escapeHtml(getPetStage(progress.level))}</p>
-          <div class="preview-tag-row">
-            <span class="preview-tag">当前积分 ${formatSignedScore(student.score)}</span>
-            <span class="preview-tag">战绩 ${activePet.wins}/${activePet.losses}</span>
-            <span class="preview-tag">羁绊 ${activePet.bond}</span>
-            <span class="preview-tag">喂养 ${activePet.feedCount} 次</span>
-            <span class="preview-tag">复活币 ${reviveCount}</span>
-            ${dead ? '<span class="preview-tag pet-dead-badge">已倒下</span>' : ''}
-          </div>
-          <div class="pet-vital-grid">
-            <article class="pet-vital-card">
-              ${renderPetVitalBar('生命值', activePet.currentHp, stats.maxHp, 'hp')}
-              ${renderPetVitalBar('蓝量', activePet.currentMana, stats.maxMana, 'mana')}
-            </article>
-            <article class="pet-vital-card">
-              <div class="preview-tag-row">
-                <span class="preview-tag">攻击 ${stats.attackMin}-${stats.attackMax}</span>
-                <span class="preview-tag">防御 ${stats.defense}</span>
-                <span class="preview-tag">暴击 ${Math.round(stats.critRate * 100)}%</span>
-                <span class="preview-tag">闪避 ${Math.round(stats.dodgeRate * 100)}%</span>
-              </div>
-              <p class="modal-help">${escapeHtml(species.description)}</p>
-            </article>
-          </div>
-          <div class="pet-stat-grid">
-            <article class="pet-stat-card"><strong>Lv.${progress.level}</strong><span>成长等级</span></article>
-            <article class="pet-stat-card"><strong>${activePet.growth}</strong><span>累计成长值</span></article>
-            <article class="pet-stat-card"><strong>${formatTimestamp(activePet.hatchedAt)}</strong><span>孵化时间</span></article>
-            <article class="pet-stat-card"><strong>${escapeHtml(species.rarity)}</strong><span>稀有度</span></article>
-          </div>
-          <div class="pet-progress-shell">
-            <div class="pet-progress-track">
-              <div class="pet-progress-bar" style="width:${Math.max(6, progress.ratio * 100)}%"></div>
-            </div>
-            <small>距离下一等级还需 ${progress.remaining} 点成长值</small>
-          </div>
-          ${dead ? `<div class="pet-dead-box"><strong>宠物当前已倒下</strong><small>${autoReviveHelp}</small><div class="timer-actions"><button class="mini-action mini-action-orange" type="button" data-action="purchase-and-revive-pet">${autoReviveLabel}</button></div></div>` : ''}
-        </div>
-      </div>
-    </section>
-    <section class="modal-panel">
-      <h3>互动与训练</h3>
-      ${dead ? `<div class="empty-state">宠物倒下时无法互动，请先复活。</div>` : `<div class="pet-action-grid">${Object.entries(PET_INTERACTION_ACTIONS).map(([actionKey, action]) => `<article class="pet-action-card"><strong>${escapeHtml(action.label)}</strong><p class="modal-help">${escapeHtml(action.description)}</p><div class="preview-tag-row"><span class="preview-tag">消耗 ${action.cost} 积分</span><span class="preview-tag">成长 +${action.growthGain}</span><span class="preview-tag">羁绊 +${action.bondGain}</span><span class="preview-tag">${action.hpGain >= 0 ? `生命 +${action.hpGain}` : `生命 ${action.hpGain}`}</span><span class="preview-tag">${action.manaGain >= 0 ? `蓝量 +${action.manaGain}` : `蓝量 ${action.manaGain}`}</span></div><button class="mini-action mini-action-green" type="button" data-action="pet-interact" data-mode="${actionKey}" ${student.score >= action.cost ? '' : 'disabled'}>${escapeHtml(action.label)}</button></article>`).join('')}</div>`}
-    </section>
-    <section class="modal-panel">
-      <h3>技能学习</h3>
-      <div class="pet-skill-grid">${renderPetSkillCards(activePet, student)}</div>
-    </section>
-    <section class="modal-panel">
-      <h3>喂养区</h3>
-      ${feedItems.length > 0 ? `<div class="pet-feed-grid">${feedItems.map((item) => `<article class="shop-card"><div class="shop-card-top"><span class="shop-card-icon">${escapeHtml(item.icon || getDefaultShopIcon(item.effectType))}</span><div><strong>${escapeHtml(item.name)}</strong><small>库存 ${item.count} · 成长 +${item.growthGain}</small></div></div><p class="modal-help">${escapeHtml(item.description || '喂养后可提升成长值并恢复部分状态。')}</p><button class="mini-action mini-action-orange" type="button" data-action="feed-active-pet" data-item-id="${item.id}" ${dead ? 'disabled' : ''}>喂养一次</button></article>`).join('')}</div>` : `<div class="empty-state">背包里还没有可喂养的零食，先去积分商城兑换吧。</div>`}
-    </section>
-    ${eggItems.length > 0 ? `<section class="modal-panel"><h3>待孵化宠物蛋</h3><div class="pet-feed-grid">${eggItems.map((item) => `<article class="shop-card"><div class="shop-card-top"><span class="shop-card-icon">${escapeHtml(item.icon || getDefaultShopIcon(item.effectType))}</span><div><strong>${escapeHtml(item.name)}</strong><small>库存 ${item.count}</small></div></div><p class="modal-help">放入孵化仓后开始 7 天倒计时。</p><button class="mini-action mini-action-green" type="button" data-action="start-egg-incubation" data-item-id="${item.id}">放入孵化仓</button></article>`).join('')}</div></section>` : ''}
-    ${incubatingEggs.length > 0 ? `<section class="modal-panel"><h3>孵化中的宠物蛋</h3><div class="pet-feed-grid">${renderIncubatingEggCards(student)}</div></section>` : ''}
-    <section class="modal-panel">
-      <h3>宠物名单</h3>
-      <div class="pet-collection-grid">${renderPetCollectionCards(student)}</div>
-    </section>
-    <section class="modal-panel">
-      <h3>背包</h3>
-      ${backpackItems.length > 0 ? `<div class="preview-tag-row">${backpackItems.map((item) => `<span class="preview-tag">${escapeHtml(item.icon || getDefaultShopIcon(item.effectType))} ${escapeHtml(item.name)} × ${item.count}</span>`).join('')}</div>` : `<div class="empty-state">当前背包还是空的。</div>`}
-    </section>
-  `;
+  return petRuntime.renderPetHomeModal(board, student);
 }
 
 function openPetHomeModal() {
-  const board = getActiveBoard();
-  const student = getSelectedStudent();
-  if (!board || !student) {
-    showToast('请先选中学生，再打开宠物家园。');
-    return;
-  }
-
-  openModal({
-    title: '宠物家园',
-    hideSubmit: true,
-    cancelText: '关闭',
-    html: renderPetHomeModal(board, student),
-    onOpen: (body) => {
-      const handleClick = (event) => {
-        const actionNode = event.target.closest('[data-action]');
-        const action = actionNode?.dataset.action;
-        const itemId = actionNode?.dataset.itemId || '';
-        const petId = actionNode?.dataset.petId || '';
-        const mode = actionNode?.dataset.mode || '';
-        const skillId = actionNode?.dataset.skillId || '';
-        const eggId = actionNode?.dataset.eggId || '';
-        const hours = actionNode?.dataset.hours || '';
-        if (!action) {
-          return;
-        }
-
-        if (action === 'open-shop') {
-          openShopModal();
-          return;
-        }
-        if (action === 'open-pet-battle') {
-          openPetBattleModal();
-          return;
-        }
-        if (action === 'start-egg-incubation') {
-          startEggIncubation(itemId);
-          return;
-        }
-        if (action === 'accelerate-egg') {
-          accelerateIncubatingEgg(eggId, hours);
-          return;
-        }
-        if (action === 'accelerate-egg-max') {
-          accelerateIncubatingEgg(eggId, 'max');
-          return;
-        }
-        if (action === 'claim-ready-egg') {
-          hatchStudentPet(eggId);
-          return;
-        }
-        if (action === 'feed-active-pet') {
-          feedActivePet(itemId);
-          return;
-        }
-        if (action === 'pet-interact') {
-          interactWithActivePet(mode);
-          return;
-        }
-        if (action === 'learn-pet-skill') {
-          learnSkillForActivePet(skillId);
-          return;
-        }
-        if (action === 'revive-active-pet') {
-          reviveActivePet(itemId);
-          return;
-        }
-        if (action === 'purchase-and-revive-pet') {
-          purchaseAndReviveActivePet();
-          return;
-        }
-        if (action === 'select-pet') {
-          setActivePet(student, petId);
-          petBattleState = null;
-          commitState(`已切换到宠物 ${activePetName(student)}。`);
-          reopenPetHomeLater();
-          return;
-        }
-        if (action === 'rename-active-pet') {
-          openRenameActivePetModal();
-        }
-      };
-
-      body.addEventListener('click', handleClick);
-      return () => {
-        body.removeEventListener('click', handleClick);
-      };
-    }
-  });
+  return petRuntime.openPetHomeModal();
 }
+
