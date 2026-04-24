@@ -425,7 +425,7 @@
       const classroomSummary = buildPetClassroomSummary(activePet);
       const classroomHint = classroomSummary.currentStreak >= PET_CLASSROOM_STREAK_STEP
         ? `课堂联动已进入连击状态，当前连续正向记录 ${classroomSummary.currentStreak} 次。`
-        : '课堂正向加分会自动带动当前宠物成长与羁绊；扣分不会倒扣成长，但会中断连击。';
+        : '课堂正向加分会自动带动当前宠物成长与羁绊；达到 3 分以上会掉落零食，连续 5 次正向记录会额外奖励复活币。';
       const autoReviveLabel = reviveCount > 0
         ? `立即使用复活币（${reviveCount}）`
         : `花费${reviveRule?.cost || 10}积分立即复活`;
@@ -501,6 +501,8 @@
             <div class="preview-tag-row">
               <span class="preview-tag">正向记录 ${classroomSummary.positiveCount} 次</span>
               <span class="preview-tag">累计课堂加分 +${classroomSummary.totalPositiveScore}</span>
+              <span class="preview-tag">课堂掉落 ${classroomSummary.totalRewardItems} 件</span>
+              ${classroomSummary.rewardEventCount > 0 ? `<span class="preview-tag">掉落触发 ${classroomSummary.rewardEventCount} 次</span>` : ''}
               ${classroomSummary.lastBonusLabel ? `<span class="preview-tag">${escapeHtml(classroomSummary.lastBonusLabel)}</span>` : ''}
             </div>
             ${classroomSummary.hasHistory ? `
@@ -508,6 +510,7 @@
                 <strong>最近一次课堂收益</strong>
                 <p class="modal-help">${escapeHtml(classroomSummary.lastItemName || '课堂加分')} · 加分 +${classroomSummary.lastScoreDelta} · 成长 +${classroomSummary.lastGrowthGain} · 羁绊 +${classroomSummary.lastBondGain}</p>
                 <p class="modal-help">${classroomSummary.lastTimestamp > 0 ? `记录时间：${escapeHtml(formatTimestamp(classroomSummary.lastTimestamp))}` : '记录时间：刚刚'}</p>
+                ${classroomSummary.lastRewardText ? `<p class="modal-help">最近掉落：${escapeHtml(classroomSummary.lastRewardText)}${classroomSummary.lastRewardTimestamp > 0 ? ` · ${escapeHtml(formatTimestamp(classroomSummary.lastRewardTimestamp))}` : ''}</p>` : ''}
               </div>
             ` : `<div class="empty-state">当前还没有课堂联动记录，先用一次课堂加分带它成长吧。</div>`}
           </div>

@@ -600,13 +600,17 @@ function createDefaultPetClassroomStats() {
     totalGrowth: 0,
     totalBond: 0,
     totalPositiveScore: 0,
+    totalRewardItems: 0,
     positiveCount: 0,
+    rewardEventCount: 0,
     currentStreak: 0,
     bestStreak: 0,
     lastItemName: '',
     lastScoreDelta: 0,
     lastGrowthGain: 0,
     lastBondGain: 0,
+    lastRewardText: '',
+    lastRewardTimestamp: 0,
     lastBonusLabel: '',
     lastTimestamp: 0
   };
@@ -618,13 +622,17 @@ function normalizePetClassroomStats(stats) {
     totalGrowth: Math.max(0, Math.floor(Number(source.totalGrowth) || 0)),
     totalBond: Math.max(0, Math.floor(Number(source.totalBond) || 0)),
     totalPositiveScore: Math.max(0, Math.floor(Number(source.totalPositiveScore) || 0)),
+    totalRewardItems: Math.max(0, Math.floor(Number(source.totalRewardItems) || 0)),
     positiveCount: Math.max(0, Math.floor(Number(source.positiveCount) || 0)),
+    rewardEventCount: Math.max(0, Math.floor(Number(source.rewardEventCount) || 0)),
     currentStreak: Math.max(0, Math.floor(Number(source.currentStreak) || 0)),
     bestStreak: Math.max(0, Math.floor(Number(source.bestStreak) || 0)),
     lastItemName: typeof source.lastItemName === 'string' ? source.lastItemName.trim().slice(0, 40) : '',
     lastScoreDelta: Math.max(0, Math.floor(Number(source.lastScoreDelta) || 0)),
     lastGrowthGain: Math.max(0, Math.floor(Number(source.lastGrowthGain) || 0)),
     lastBondGain: Math.max(0, Math.floor(Number(source.lastBondGain) || 0)),
+    lastRewardText: typeof source.lastRewardText === 'string' ? source.lastRewardText.trim().slice(0, 80) : '',
+    lastRewardTimestamp: Number.isFinite(Number(source.lastRewardTimestamp)) ? Number(source.lastRewardTimestamp) : 0,
     lastBonusLabel: typeof source.lastBonusLabel === 'string' ? source.lastBonusLabel.trim().slice(0, 60) : '',
     lastTimestamp: Number.isFinite(Number(source.lastTimestamp)) ? Number(source.lastTimestamp) : 0
   };
@@ -2969,7 +2977,65 @@ function getPetClassroomBonusProfile(scoreDelta) {
   return PET_CLASSROOM_BONUS_THRESHOLDS.find((entry) => scoreDelta >= entry.minScore) || { growth: 0, bond: 0, label: '' };
 }
 
-function applyPetClassroomProgress(student, appliedDelta, itemName = '', note = '') {
+function appendPetClassroomReward(rewards, item, count = 1) {
+  if (!item?.id || count <= 0) {
+    return rewards;
+  }
+
+  const existingReward = rewards.find((entry) => entry.itemId === item.id);
+  if (existingReward) {
+    existingReward.count += count;
+    return rewards;
+  }
+
+  rewards.push({
+    itemId: item.id,
+    name: item.name,
+    count
+  });
+  return rewards;
+}
+
+function formatPetClassroomRewardText(rewards) {
+  return (Array.isArray(rewards) ? rewards : [])
+    .filter((reward) => reward && reward.count > 0)
+    .map((reward) => `${reward.name} x${reward.count}`)
+    .join('、');
+}
+
+function grantPetClassroomRewards(board, student, scoreDelta, streakCount) {
+  const rewards = [];
+  if (!board || !student || scoreDelta <= 0) {
+    return rewards;
+  }
+
+  const availableItems = getShopItems(board).filter((item) => item?.enabled !== false);
+  const snackItems = availableItems
+    .filter((item) => item.effectType === 'snack')
+    .sort((left, right) => left.growthGain - right.growthGain || left.cost - right.cost || left.name.localeCompare(right.name, 'zh-CN'));
+  if (scoreDelta >= 3 && snackItems.length > 0) {
+    let snackIndex = 0;
+    if (scoreDelta >= 8) {
+      snackIndex = snackItems.length - 1;
+    } else if (scoreDelta >= 5) {
+      snackIndex = Math.min(snackItems.length - 1, Math.max(1, Math.floor(snackItems.length / 2)));
+    }
+
+    const snackItem = snackItems[snackIndex];
+    updateStudentInventory(student, snackItem.id, 1);
+    appendPetClassroomReward(rewards, snackItem, 1);
+  }
+
+  const reviveItem = availableItems.find((item) => item.effectType === 'revive') || null;
+  if (reviveItem && streakCount > 0 && streakCount % 5 === 0) {
+    updateStudentInventory(student, reviveItem.id, 1);
+    appendPetClassroomReward(rewards, reviveItem, 1);
+  }
+
+  return rewards;
+}
+
+function applyPetClassroomProgress(board, student, appliedDelta, itemName = '', note = '') {
   const pet = getActivePet(student);
   if (!student || !pet || !Number.isFinite(Number(appliedDelta)) || appliedDelta === 0) {
     return null;
@@ -3002,12 +3068,22 @@ function applyPetClassroomProgress(student, appliedDelta, itemName = '', note = 
   const bondGain = Math.max(1, Math.ceil(positiveDelta / 2)) + bonusProfile.bond + streakBondBonus;
   const result = grantPetGrowth(pet, growthGain);
   const actualGrowthGain = Math.max(0, Math.floor(Number(result.appliedGrowth) || 0));
+  const rewards = grantPetClassroomRewards(board, student, positiveDelta, nextStreak);
+  const rewardText = formatPetClassroomRewardText(rewards);
+  const rewardCount = rewards.reduce((sum, reward) => sum + reward.count, 0);
+  const eventTimestamp = Date.now();
 
   pet.bond = Math.min(999, Math.max(0, Number(pet.bond) || 0) + bondGain);
   classroomStats.totalGrowth += actualGrowthGain;
   classroomStats.totalBond += bondGain;
   classroomStats.totalPositiveScore += positiveDelta;
+  classroomStats.totalRewardItems += rewardCount;
   classroomStats.positiveCount += 1;
+  if (rewardCount > 0) {
+    classroomStats.rewardEventCount += 1;
+    classroomStats.lastRewardText = rewardText;
+    classroomStats.lastRewardTimestamp = eventTimestamp;
+  }
   classroomStats.currentStreak = nextStreak;
   classroomStats.bestStreak = Math.max(classroomStats.bestStreak, nextStreak);
   classroomStats.lastItemName = itemName || '课堂加分';
@@ -3015,7 +3091,7 @@ function applyPetClassroomProgress(student, appliedDelta, itemName = '', note = 
   classroomStats.lastGrowthGain = actualGrowthGain;
   classroomStats.lastBondGain = bondGain;
   classroomStats.lastBonusLabel = [bonusProfile.label, streakGrowthBonus > 0 ? `连击 ${nextStreak}` : ''].filter(Boolean).join(' · ');
-  classroomStats.lastTimestamp = Date.now();
+  classroomStats.lastTimestamp = eventTimestamp;
 
   return {
     triggered: true,
@@ -3026,6 +3102,8 @@ function applyPetClassroomProgress(student, appliedDelta, itemName = '', note = 
     scoreDelta: positiveDelta,
     growthGain: actualGrowthGain,
     bondGain,
+    rewardText,
+    rewards,
     currentStreak: nextStreak,
     bestStreak: classroomStats.bestStreak,
     bonusLabel: classroomStats.lastBonusLabel,
@@ -3044,20 +3122,34 @@ function buildPetClassroomEffectMessage(effects) {
     const effect = positiveEffects[0];
     const bonusText = effect.bonusLabel ? `（${effect.bonusLabel}）` : '';
     const levelText = effect.leveledUp ? `，升到 Lv.${effect.level}` : '';
-    return ` 宠物联动：${effect.petName} 获得成长 +${effect.growthGain}、羁绊 +${effect.bondGain}${bonusText}${levelText}。`;
+    const rewardText = effect.rewardText ? `，课堂掉落 ${effect.rewardText}` : '';
+    return ` 宠物联动：${effect.petName} 获得成长 +${effect.growthGain}、羁绊 +${effect.bondGain}${bonusText}${levelText}${rewardText}。`;
   }
 
   const totalGrowth = positiveEffects.reduce((sum, effect) => sum + effect.growthGain, 0);
   const totalBond = positiveEffects.reduce((sum, effect) => sum + effect.bondGain, 0);
   const leveledCount = positiveEffects.filter((effect) => effect.leveledUp).length;
-  return ` 宠物联动：${positiveEffects.length} 只宠物共获得成长 +${totalGrowth}、羁绊 +${totalBond}${leveledCount > 0 ? `，其中 ${leveledCount} 只完成升级` : ''}。`;
+  const rewardMap = new Map();
+  positiveEffects.forEach((effect) => {
+    (Array.isArray(effect.rewards) ? effect.rewards : []).forEach((reward) => {
+      if (!reward?.itemId || !reward.count) {
+        return;
+      }
+      const snapshot = rewardMap.get(reward.itemId) || { name: reward.name, count: 0 };
+      snapshot.count += reward.count;
+      rewardMap.set(reward.itemId, snapshot);
+    });
+  });
+  const rewardSummary = [...rewardMap.values()].map((reward) => `${reward.name} x${reward.count}`).join('、');
+  return ` 宠物联动：${positiveEffects.length} 只宠物共获得成长 +${totalGrowth}、羁绊 +${totalBond}${leveledCount > 0 ? `，其中 ${leveledCount} 只完成升级` : ''}${rewardSummary ? `，课堂掉落 ${rewardSummary}` : ''}。`;
 }
 
 function buildPetClassroomSummary(pet) {
   const stats = ensurePetClassroomStats(pet);
   return {
     ...stats,
-    hasHistory: stats.positiveCount > 0
+    hasHistory: stats.positiveCount > 0,
+    hasRewardHistory: stats.totalRewardItems > 0
   };
 }
 
@@ -7034,10 +7126,11 @@ function spendStudentPoints(student, cost, itemName, note = '宠物系统') {
 }
 
 function applyDeltaToStudents(students, itemName, delta, note = '') {
+  const board = getActiveBoard();
   return (Array.isArray(students) ? students : [])
     .map((student) => {
       const appliedDelta = changeStudentScore(student, delta, itemName, note);
-      return applyPetClassroomProgress(student, appliedDelta, itemName, note);
+      return applyPetClassroomProgress(board, student, appliedDelta, itemName, note);
     })
     .filter(Boolean);
 }
