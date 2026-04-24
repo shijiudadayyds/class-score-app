@@ -305,6 +305,15 @@ const PET_INTERACTION_ACTIONS = {
   }
 };
 
+const PET_CLASSROOM_GROWTH_PER_SCORE = 2;
+const PET_CLASSROOM_STREAK_STEP = 3;
+const PET_CLASSROOM_MAX_STREAK_GROWTH_BONUS = 4;
+const PET_CLASSROOM_BONUS_THRESHOLDS = [
+  { minScore: 8, growth: 8, bond: 3, label: '课堂高光' },
+  { minScore: 5, growth: 4, bond: 2, label: '课堂亮点' },
+  { minScore: 3, growth: 2, bond: 1, label: '课堂鼓励' }
+];
+
 const GENERATED_PET_LIBRARY = buildGeneratedPetLibrary();
 ALL_PET_SPECIES.push(...GENERATED_PET_LIBRARY.species);
 PET_SKILLS.push(...GENERATED_PET_LIBRARY.skills);
@@ -586,6 +595,50 @@ function normalizeStudentTextField(value, maxLength = 40) {
   return String(value ?? '').trim().slice(0, maxLength);
 }
 
+function createDefaultPetClassroomStats() {
+  return {
+    totalGrowth: 0,
+    totalBond: 0,
+    totalPositiveScore: 0,
+    positiveCount: 0,
+    currentStreak: 0,
+    bestStreak: 0,
+    lastItemName: '',
+    lastScoreDelta: 0,
+    lastGrowthGain: 0,
+    lastBondGain: 0,
+    lastBonusLabel: '',
+    lastTimestamp: 0
+  };
+}
+
+function normalizePetClassroomStats(stats) {
+  const source = stats && typeof stats === 'object' ? stats : {};
+  return {
+    totalGrowth: Math.max(0, Math.floor(Number(source.totalGrowth) || 0)),
+    totalBond: Math.max(0, Math.floor(Number(source.totalBond) || 0)),
+    totalPositiveScore: Math.max(0, Math.floor(Number(source.totalPositiveScore) || 0)),
+    positiveCount: Math.max(0, Math.floor(Number(source.positiveCount) || 0)),
+    currentStreak: Math.max(0, Math.floor(Number(source.currentStreak) || 0)),
+    bestStreak: Math.max(0, Math.floor(Number(source.bestStreak) || 0)),
+    lastItemName: typeof source.lastItemName === 'string' ? source.lastItemName.trim().slice(0, 40) : '',
+    lastScoreDelta: Math.max(0, Math.floor(Number(source.lastScoreDelta) || 0)),
+    lastGrowthGain: Math.max(0, Math.floor(Number(source.lastGrowthGain) || 0)),
+    lastBondGain: Math.max(0, Math.floor(Number(source.lastBondGain) || 0)),
+    lastBonusLabel: typeof source.lastBonusLabel === 'string' ? source.lastBonusLabel.trim().slice(0, 60) : '',
+    lastTimestamp: Number.isFinite(Number(source.lastTimestamp)) ? Number(source.lastTimestamp) : 0
+  };
+}
+
+function ensurePetClassroomStats(pet) {
+  if (!pet) {
+    return createDefaultPetClassroomStats();
+  }
+
+  pet.classroomStats = normalizePetClassroomStats(pet.classroomStats);
+  return pet.classroomStats;
+}
+
 function normalizeInventory(inventory) {
   const source = inventory && typeof inventory === 'object' ? inventory : {};
   return Object.entries(source).reduce((nextInventory, [itemId, count]) => {
@@ -619,6 +672,7 @@ function normalizePet(pet) {
       (Array.isArray(pet?.learnedSkillIds) ? pet.learnedSkillIds : [])
         .filter((skillId) => typeof skillId === 'string' && validSkillIds.has(skillId))
     )],
+    classroomStats: normalizePetClassroomStats(pet?.classroomStats),
     defenseBuff: Math.max(0, Math.floor(Number(pet?.defenseBuff) || 0)),
     dodgeBuff: Math.max(0, Number(pet?.dodgeBuff) || 0),
     vitalsInitialized: Boolean(pet?.vitalsInitialized),
@@ -2889,13 +2943,14 @@ function adjustPetVitals(pet, deltaHp, deltaMana = 0) {
 
 function grantPetGrowth(pet, growthGain) {
   if (!pet || growthGain <= 0) {
-    return { leveledUp: false, level: getPetLevel(pet) };
+    return { leveledUp: false, level: getPetLevel(pet), appliedGrowth: 0 };
   }
 
   const previousStats = getPetDerivedStats(pet);
   const previousLevel = previousStats.level;
   const maxGrowth = (PET_MAX_LEVEL - 1) * PET_LEVEL_STEP;
-  pet.growth = Math.min(maxGrowth, Math.max(0, Number(pet.growth) || 0) + growthGain);
+  const previousGrowth = Math.max(0, Number(pet.growth) || 0);
+  pet.growth = Math.min(maxGrowth, previousGrowth + growthGain);
   syncPetVitals(pet, { previousMaxHp: previousStats.maxHp, previousMaxMana: previousStats.maxMana, preserveRatio: true });
   const nextLevel = getPetLevel(pet);
   if (nextLevel > previousLevel) {
@@ -2905,7 +2960,104 @@ function grantPetGrowth(pet, growthGain) {
 
   return {
     leveledUp: nextLevel > previousLevel,
-    level: nextLevel
+    level: nextLevel,
+    appliedGrowth: pet.growth - previousGrowth
+  };
+}
+
+function getPetClassroomBonusProfile(scoreDelta) {
+  return PET_CLASSROOM_BONUS_THRESHOLDS.find((entry) => scoreDelta >= entry.minScore) || { growth: 0, bond: 0, label: '' };
+}
+
+function applyPetClassroomProgress(student, appliedDelta, itemName = '', note = '') {
+  const pet = getActivePet(student);
+  if (!student || !pet || !Number.isFinite(Number(appliedDelta)) || appliedDelta === 0) {
+    return null;
+  }
+
+  const classroomStats = ensurePetClassroomStats(pet);
+  if (appliedDelta < 0) {
+    classroomStats.currentStreak = 0;
+    return {
+      triggered: false,
+      streakBroken: true,
+      petId: pet.id,
+      petName: pet.name
+    };
+  }
+
+  const positiveDelta = Math.max(0, Math.floor(Number(appliedDelta) || 0));
+  if (positiveDelta <= 0) {
+    return null;
+  }
+
+  const nextStreak = classroomStats.currentStreak + 1;
+  const bonusProfile = getPetClassroomBonusProfile(positiveDelta);
+  const streakGrowthBonus = Math.min(
+    PET_CLASSROOM_MAX_STREAK_GROWTH_BONUS,
+    Math.floor(nextStreak / PET_CLASSROOM_STREAK_STEP)
+  );
+  const streakBondBonus = nextStreak >= PET_CLASSROOM_STREAK_STEP ? 1 : 0;
+  const growthGain = (positiveDelta * PET_CLASSROOM_GROWTH_PER_SCORE) + bonusProfile.growth + streakGrowthBonus;
+  const bondGain = Math.max(1, Math.ceil(positiveDelta / 2)) + bonusProfile.bond + streakBondBonus;
+  const result = grantPetGrowth(pet, growthGain);
+  const actualGrowthGain = Math.max(0, Math.floor(Number(result.appliedGrowth) || 0));
+
+  pet.bond = Math.min(999, Math.max(0, Number(pet.bond) || 0) + bondGain);
+  classroomStats.totalGrowth += actualGrowthGain;
+  classroomStats.totalBond += bondGain;
+  classroomStats.totalPositiveScore += positiveDelta;
+  classroomStats.positiveCount += 1;
+  classroomStats.currentStreak = nextStreak;
+  classroomStats.bestStreak = Math.max(classroomStats.bestStreak, nextStreak);
+  classroomStats.lastItemName = itemName || '课堂加分';
+  classroomStats.lastScoreDelta = positiveDelta;
+  classroomStats.lastGrowthGain = actualGrowthGain;
+  classroomStats.lastBondGain = bondGain;
+  classroomStats.lastBonusLabel = [bonusProfile.label, streakGrowthBonus > 0 ? `连击 ${nextStreak}` : ''].filter(Boolean).join(' · ');
+  classroomStats.lastTimestamp = Date.now();
+
+  return {
+    triggered: true,
+    petId: pet.id,
+    petName: pet.name,
+    itemName: classroomStats.lastItemName,
+    note,
+    scoreDelta: positiveDelta,
+    growthGain: actualGrowthGain,
+    bondGain,
+    currentStreak: nextStreak,
+    bestStreak: classroomStats.bestStreak,
+    bonusLabel: classroomStats.lastBonusLabel,
+    leveledUp: result.leveledUp,
+    level: result.level
+  };
+}
+
+function buildPetClassroomEffectMessage(effects) {
+  const positiveEffects = (Array.isArray(effects) ? effects : []).filter((effect) => effect?.triggered);
+  if (positiveEffects.length === 0) {
+    return '';
+  }
+
+  if (positiveEffects.length === 1) {
+    const effect = positiveEffects[0];
+    const bonusText = effect.bonusLabel ? `（${effect.bonusLabel}）` : '';
+    const levelText = effect.leveledUp ? `，升到 Lv.${effect.level}` : '';
+    return ` 宠物联动：${effect.petName} 获得成长 +${effect.growthGain}、羁绊 +${effect.bondGain}${bonusText}${levelText}。`;
+  }
+
+  const totalGrowth = positiveEffects.reduce((sum, effect) => sum + effect.growthGain, 0);
+  const totalBond = positiveEffects.reduce((sum, effect) => sum + effect.bondGain, 0);
+  const leveledCount = positiveEffects.filter((effect) => effect.leveledUp).length;
+  return ` 宠物联动：${positiveEffects.length} 只宠物共获得成长 +${totalGrowth}、羁绊 +${totalBond}${leveledCount > 0 ? `，其中 ${leveledCount} 只完成升级` : ''}。`;
+}
+
+function buildPetClassroomSummary(pet) {
+  const stats = ensurePetClassroomStats(pet);
+  return {
+    ...stats,
+    hasHistory: stats.positiveCount > 0
   };
 }
 
@@ -3216,11 +3368,11 @@ function applyDirectScoreDelta(delta, label = '', note = '') {
   }
 
   const itemName = label.trim() || (normalizedDelta > 0 ? '快速加分' : '快速扣分');
-  applyDeltaToStudents(targets, itemName, normalizedDelta, note);
+  const petEffects = applyDeltaToStudents(targets, itemName, normalizedDelta, note);
   commitState(
     targets.length > 1
-      ? `已为 ${targets.length} 名学生${normalizedDelta > 0 ? '加' : '扣'} ${Math.abs(normalizedDelta)} 分。`
-      : `${targets[0].name} 已${normalizedDelta > 0 ? '加' : '扣'} ${Math.abs(normalizedDelta)} 分。`
+      ? `已为 ${targets.length} 名学生${normalizedDelta > 0 ? '加' : '扣'} ${Math.abs(normalizedDelta)} 分。${buildPetClassroomEffectMessage(petEffects)}`
+      : `${targets[0].name} 已${normalizedDelta > 0 ? '加' : '扣'} ${Math.abs(normalizedDelta)} 分。${buildPetClassroomEffectMessage(petEffects)}`
   );
 }
 
@@ -3716,6 +3868,7 @@ function createPetForStudent(student, speciesId) {
     currentHp: 0,
     currentMana: 0,
     learnedSkillIds: getPetSkillPool(species.id).slice(0, 1).map((skill) => skill.id),
+    classroomStats: createDefaultPetClassroomStats(),
     defenseBuff: 0,
     dodgeBuff: 0,
     vitalsInitialized: false,
@@ -4402,11 +4555,11 @@ function applyScoreTemplate(kind, templateId) {
   const targetStudents = checkedStudents.length > 0 ? checkedStudents : [student];
   const delta = kind === 'plus' ? template.value : -template.value;
 
-  applyDeltaToStudents(targetStudents, template.name, delta, '');
+  const petEffects = applyDeltaToStudents(targetStudents, template.name, delta, '');
   commitState(
     targetStudents.length > 1
-      ? `已为 ${targetStudents.length} 名已勾选学生应用“${template.name}”。`
-      : `${targetStudents[0].name} 已应用“${template.name}”。`
+      ? `已为 ${targetStudents.length} 名已勾选学生应用“${template.name}”。${buildPetClassroomEffectMessage(petEffects)}`
+      : `${targetStudents[0].name} 已应用“${template.name}”。${buildPetClassroomEffectMessage(petEffects)}`
   );
 }
 
@@ -5142,8 +5295,8 @@ function openGroupBonusModal() {
         nameListHtml: buildPreviewNameList(targetStudents.map((student) => student.name), { title: '即将加分的学生' }),
         warningText: '确认后将一次性对整个小组生效。',
         onConfirm: async () => {
-          applyDeltaToStudents(targetStudents, label, value, note);
-          commitState(`已为 ${getGroupName(board, groupId)} 的 ${targetStudents.length} 名学生加分。`);
+          const petEffects = applyDeltaToStudents(targetStudents, label, value, note);
+          commitState(`已为 ${getGroupName(board, groupId)} 的 ${targetStudents.length} 名学生加分。${buildPetClassroomEffectMessage(petEffects)}`);
         }
       });
       return false;
@@ -5197,8 +5350,8 @@ function openGroupedBaseBonusModal() {
         nameListHtml: buildPreviewNameList(targetStudents.map((student) => student.name), { title: '即将统一加分的已分组学生' }),
         warningText: '确认后将一次性作用于当前面板中所有已分组学生。',
         onConfirm: async () => {
-          applyDeltaToStudents(targetStudents, label, value, note);
-          commitState(`已为 ${targetStudents.length} 名已分组学生统一加分。`);
+          const petEffects = applyDeltaToStudents(targetStudents, label, value, note);
+          commitState(`已为 ${targetStudents.length} 名已分组学生统一加分。${buildPetClassroomEffectMessage(petEffects)}`);
         }
       });
       return false;
@@ -5775,8 +5928,8 @@ function openBatchScoringModal() {
         nameListHtml: buildPreviewNameList(targetStudents.map((student) => student.name), { title: '即将处理的学生' }),
         warningText: '确认前请核对人数和名单，避免批量作用范围选错。',
         onConfirm: async () => {
-          applyDeltaToStudents(targetStudents, label, delta, note);
-          commitState(`已对 ${targetStudents.length} 名学生完成批量${type === 'plus' ? '加' : '减'}分。`);
+          const petEffects = applyDeltaToStudents(targetStudents, label, delta, note);
+          commitState(`已对 ${targetStudents.length} 名学生完成批量${type === 'plus' ? '加' : '减'}分。${buildPetClassroomEffectMessage(petEffects)}`);
         }
       });
       return false;
@@ -6881,9 +7034,12 @@ function spendStudentPoints(student, cost, itemName, note = '宠物系统') {
 }
 
 function applyDeltaToStudents(students, itemName, delta, note = '') {
-  (Array.isArray(students) ? students : []).forEach((student) => {
-    changeStudentScore(student, delta, itemName, note);
-  });
+  return (Array.isArray(students) ? students : [])
+    .map((student) => {
+      const appliedDelta = changeStudentScore(student, delta, itemName, note);
+      return applyPetClassroomProgress(student, appliedDelta, itemName, note);
+    })
+    .filter(Boolean);
 }
 
 function createIncubatingEgg(itemId) {
@@ -6981,6 +7137,7 @@ function formatDurationCompact(milliseconds) {
 
 function buildPetSummaryText(board, student) {
   const pets = getStudentPets(student);
+  const activePet = getActivePet(student);
   const eggCount = getStudentEggCount(board, student);
   const incubatingEggs = getIncubatingEggs(student);
   const readyEggs = incubatingEggs.filter((egg) => isEggReadyToHatch(egg)).length;
@@ -6990,7 +7147,9 @@ function buildPetSummaryText(board, student) {
     return '宠物家园未开启';
   }
 
-  return `宠物 ${pets.length} 只 · 待孵化 ${eggCount} 枚 · 孵化中 ${incubatingEggs.length} 枚 · 可破壳 ${readyEggs} 枚 · 零食 ${snacks} 份`;
+  const classroomSummary = activePet ? buildPetClassroomSummary(activePet) : null;
+  const classroomText = classroomSummary?.totalGrowth > 0 ? ` · 课堂成长 +${classroomSummary.totalGrowth}` : '';
+  return `宠物 ${pets.length} 只 · 待孵化 ${eggCount} 枚 · 孵化中 ${incubatingEggs.length} 枚 · 可破壳 ${readyEggs} 枚 · 零食 ${snacks} 份${classroomText}`;
 }
 
 function interactWithActivePet(interactionKey) {
@@ -7360,14 +7519,14 @@ function applyQuickAdjust() {
   const delta = ui.quickAdjustType.value === 'plus' ? value : -value;
   const label = ui.quickAdjustLabel.value.trim() || (delta > 0 ? '快速加分' : '快速扣分');
 
-  applyDeltaToStudents(targets, label, delta, note);
+  const petEffects = applyDeltaToStudents(targets, label, delta, note);
   ui.quickAdjustLabel.value = '';
   ui.quickAdjustNote.value = '';
   ui.quickAdjustValue.value = String(getActiveBoard()?.settings.stepValue || 1);
   commitState(
     targets.length > 1
-      ? `已为 ${targets.length} 名学生完成自定义${delta > 0 ? '加' : '减'}分。`
-      : `${targets[0].name} 已完成自定义${delta > 0 ? '加' : '减'}分。`
+      ? `已为 ${targets.length} 名学生完成自定义${delta > 0 ? '加' : '减'}分。${buildPetClassroomEffectMessage(petEffects)}`
+      : `${targets[0].name} 已完成自定义${delta > 0 ? '加' : '减'}分。${buildPetClassroomEffectMessage(petEffects)}`
   );
 }
 

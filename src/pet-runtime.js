@@ -422,6 +422,10 @@
       const stats = getPetDerivedStats(activePet);
       const dead = isPetDead(activePet);
       const learnedSkillCount = Array.isArray(activePet.learnedSkillIds) ? activePet.learnedSkillIds.length : 0;
+      const classroomSummary = buildPetClassroomSummary(activePet);
+      const classroomHint = classroomSummary.currentStreak >= PET_CLASSROOM_STREAK_STEP
+        ? `课堂联动已进入连击状态，当前连续正向记录 ${classroomSummary.currentStreak} 次。`
+        : '课堂正向加分会自动带动当前宠物成长与羁绊；扣分不会倒扣成长，但会中断连击。';
       const autoReviveLabel = reviveCount > 0
         ? `立即使用复活币（${reviveCount}）`
         : `花费${reviveRule?.cost || 10}积分立即复活`;
@@ -482,6 +486,30 @@
               </div>
               ${dead ? `<div class="pet-dead-box"><strong>宠物当前已倒下</strong><small>${autoReviveHelp}</small><div class="timer-actions"><button class="mini-action mini-action-orange" type="button" data-action="purchase-and-revive-pet">${autoReviveLabel}</button></div></div>` : ''}
             </div>
+          </div>
+        </section>
+        <section class="modal-panel">
+          <h3>课堂联动</h3>
+          <div class="pet-progress-shell">
+            <p class="modal-help">${escapeHtml(classroomHint)}</p>
+            <div class="pet-stat-grid">
+              <article class="pet-stat-card"><strong>+${classroomSummary.totalGrowth}</strong><span>课堂成长</span></article>
+              <article class="pet-stat-card"><strong>+${classroomSummary.totalBond}</strong><span>课堂羁绊</span></article>
+              <article class="pet-stat-card"><strong>${classroomSummary.currentStreak}</strong><span>当前连击</span></article>
+              <article class="pet-stat-card"><strong>${classroomSummary.bestStreak}</strong><span>最高连击</span></article>
+            </div>
+            <div class="preview-tag-row">
+              <span class="preview-tag">正向记录 ${classroomSummary.positiveCount} 次</span>
+              <span class="preview-tag">累计课堂加分 +${classroomSummary.totalPositiveScore}</span>
+              ${classroomSummary.lastBonusLabel ? `<span class="preview-tag">${escapeHtml(classroomSummary.lastBonusLabel)}</span>` : ''}
+            </div>
+            ${classroomSummary.hasHistory ? `
+              <div class="preview-summary">
+                <strong>最近一次课堂收益</strong>
+                <p class="modal-help">${escapeHtml(classroomSummary.lastItemName || '课堂加分')} · 加分 +${classroomSummary.lastScoreDelta} · 成长 +${classroomSummary.lastGrowthGain} · 羁绊 +${classroomSummary.lastBondGain}</p>
+                <p class="modal-help">${classroomSummary.lastTimestamp > 0 ? `记录时间：${escapeHtml(formatTimestamp(classroomSummary.lastTimestamp))}` : '记录时间：刚刚'}</p>
+              </div>
+            ` : `<div class="empty-state">当前还没有课堂联动记录，先用一次课堂加分带它成长吧。</div>`}
           </div>
         </section>
         <section class="modal-panel">
