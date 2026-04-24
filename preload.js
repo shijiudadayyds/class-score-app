@@ -16,10 +16,16 @@ contextBridge.exposeInMainWorld('classScore', {
   startWidgetDrag: (screenX, screenY) => ipcRenderer.send('widget:drag-start', { screenX, screenY }),
   updateWidgetDrag: (screenX, screenY) => ipcRenderer.send('widget:drag-move', { screenX, screenY }),
   endWidgetDrag: () => ipcRenderer.send('widget:drag-end'),
+  triggerWidgetAction: (action) => ipcRenderer.send('widget:action', { action }),
   openWidgetMenu: () => ipcRenderer.send('widget:open-menu'),
   onWidgetState: (callback) => {
     const handler = (_event, payload) => callback(payload);
     ipcRenderer.on('widget:state', handler);
     return () => ipcRenderer.removeListener('widget:state', handler);
+  },
+  onWidgetAction: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('app:widget-action', handler);
+    return () => ipcRenderer.removeListener('app:widget-action', handler);
   }
 });

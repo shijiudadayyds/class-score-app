@@ -1145,45 +1145,74 @@ function getImportedStudentGroupName(board, student) {
   return normalizeStudentTextField(group?.name, 24);
 }
 
+function buildStudentImportFieldDiffs(board, existingStudent, draft) {
+  const fields = [];
+  const compareField = (field, label, currentValue, importedValue) => {
+    if (!importedValue) {
+      return;
+    }
+
+    if (!currentValue) {
+      fields.push({
+        field,
+        label,
+        currentValue: '',
+        importedValue,
+        kind: 'addition'
+      });
+      return;
+    }
+
+    if (currentValue !== importedValue) {
+      fields.push({
+        field,
+        label,
+        currentValue,
+        importedValue,
+        kind: 'conflict'
+      });
+    }
+  };
+
+  compareField('studentNo', '学号', normalizeStudentTextField(existingStudent?.studentNo, 24), draft?.studentNo);
+  compareField('seatNo', '座号', normalizeStudentTextField(existingStudent?.seatNo, 12), draft?.seatNo);
+  compareField('note', '备注', normalizeStudentTextField(existingStudent?.note, 60), draft?.note);
+  compareField('groupName', '小组', getImportedStudentGroupName(board, existingStudent), draft?.groupName);
+
+  return fields;
+}
+
 function buildStudentImportResolution(board, existingStudent, draft) {
   if (!existingStudent || !draft) {
     return {
       name: draft?.name || existingStudent?.name || '',
       supplement: null,
       additions: [],
-      conflicts: []
+      conflicts: [],
+      fields: []
     };
   }
 
   const supplement = {
     name: draft.name
   };
-  const additions = [];
-  const conflicts = [];
-  const compareField = (field, label, currentValue, importedValue) => {
-    if (!importedValue) {
-      return;
-    }
-    if (!currentValue) {
-      supplement[field] = importedValue;
-      additions.push(`${label}补为“${importedValue}”`);
-      return;
-    }
-    if (currentValue !== importedValue) {
-      conflicts.push(`${label}保留“${currentValue}”，导入为“${importedValue}”`);
-    }
-  };
-
-  compareField('studentNo', '学号', normalizeStudentTextField(existingStudent.studentNo, 24), draft.studentNo);
-  compareField('seatNo', '座号', normalizeStudentTextField(existingStudent.seatNo, 12), draft.seatNo);
-  compareField('note', '备注', normalizeStudentTextField(existingStudent.note, 60), draft.note);
-  compareField('groupName', '小组', getImportedStudentGroupName(board, existingStudent), draft.groupName);
+  const fields = buildStudentImportFieldDiffs(board, existingStudent, draft);
+  const additions = fields
+    .filter((field) => field.kind === 'addition')
+    .map((field) => {
+      supplement[field.field] = field.importedValue;
+      return `${field.label}补为“${field.importedValue}”`;
+    });
+  const conflicts = fields
+    .filter((field) => field.kind === 'conflict')
+    .map((field) => `${field.label}保留“${field.currentValue}”，导入为“${field.importedValue}”`);
 
   return {
     name: draft.name,
     supplement: buildStudentDraftMeta(supplement) ? supplement : null,
     additions,
-    conflicts
+    conflicts,
+    fields
   };
 }
 
@@ -1212,6 +1241,7 @@ function analyzeStudentBatch(board, students) {
         name: student.name,
         additions: resolution.additions,
         conflicts: resolution.conflicts,
+        fields: resolution.fields,
         status: resolution.conflicts.length > 0 ? '补全并保留部分原值' : '补全资料'
       });
       return;
@@ -1222,6 +1252,7 @@ function analyzeStudentBatch(board, students) {
         name: student.name,
         additions: [],
         conflicts: resolution.conflicts,
+        fields: resolution.fields,
         status: '保留原值'
       });
       return;
@@ -1341,6 +1372,86 @@ function buildPreviewResolutionList(entries, options = {}) {
       ${hiddenCount > 0 ? `<p class="modal-help">还有 ${hiddenCount} 项未展开显示。</p>` : ''}
     </div>
   `;
+}
+
+function buildImportConflictChoiceEntries(entries) {
+  return (Array.isArray(entries) ? entries : [])
+    .filter((entry) => entry?.name)
+    .map((entry, index) => ({
+      key: `import-conflict-${index}`,
+      name: entry.name,
+      additions: Array.isArray(entry.additions) ? entry.additions : [],
+      conflictFields: (Array.isArray(entry.fields) ? entry.fields : []).filter((field) => field.kind === 'conflict')
+    }))
+    .filter((entry) => entry.conflictFields.length > 0);
+}
+
+function buildImportConflictChoiceSection(entries) {
+  const items = Array.isArray(entries) ? entries.filter((entry) => entry?.conflictFields?.length > 0) : [];
+  if (items.length === 0) {
+    return '';
+  }
+
+  return `
+    <div class="preview-summary">
+      <strong>冲突字段人工确认</strong>
+      <div class="import-conflict-list">
+        ${items.map((entry) => `
+          <article class="import-conflict-card">
+            <div class="import-conflict-head">
+              <div>
+                <strong>${escapeHtml(entry.name)}</strong>
+                <p class="modal-help">同名学生存在字段差异，请逐项确认保留原值还是采用导入值。</p>
+              </div>
+              <span class="preview-tag">${entry.conflictFields.length} 项冲突</span>
+            </div>
+            ${entry.additions.length > 0 ? `<div class="preview-tag-row">${entry.additions.map((item) => `<span class="preview-tag">${escapeHtml(item)}</span>`).join('')}</div>` : ''}
+            <div class="import-conflict-field-list">
+              ${entry.conflictFields.map((field) => `
+                <div class="import-conflict-field">
+                  <div class="import-conflict-copy">
+                    <span class="import-conflict-label">${escapeHtml(field.label)}</span>
+                    <small>当前：${escapeHtml(field.currentValue || '未填写')}</small>
+                    <small>导入：${escapeHtml(field.importedValue || '未填写')}</small>
+                  </div>
+                  <div class="import-conflict-options">
+                    <label class="import-conflict-option">
+                      <input type="radio" name="${entry.key}-${field.field}" value="keep" checked />
+                      <span>保留原值</span>
+                    </label>
+                    <label class="import-conflict-option is-import">
+                      <input type="radio" name="${entry.key}-${field.field}" value="import" />
+                      <span>采用导入值</span>
+                    </label>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </article>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function collectImportConflictOverrideDrafts(formData, entries) {
+  return (Array.isArray(entries) ? entries : []).reduce((drafts, entry) => {
+    const draft = { name: entry.name };
+    let changed = false;
+
+    entry.conflictFields.forEach((field) => {
+      const decision = formData.get(`${entry.key}-${field.field}`)?.toString() || 'keep';
+      if (decision === 'import' && field.importedValue) {
+        draft[field.field] = field.importedValue;
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      drafts.push(draft);
+    }
+    return drafts;
+  }, []);
 }
 
 function openActionPreviewModal(config) {
@@ -1780,6 +1891,42 @@ function cacheElements() {
   });
 }
 
+function toggleStopwatchWithFeedback() {
+  if (stopwatch.running) {
+    pauseStopwatch();
+    showToast('计时器已暂停。');
+    return;
+  }
+
+  startStopwatch();
+  showToast('计时器已开始。');
+}
+
+function resetStopwatchWithFeedback() {
+  resetStopwatch();
+  showToast('计时器已复位。');
+}
+
+function toggleCountdownWithFeedback() {
+  if (countdown.running) {
+    pauseCountdown();
+    showToast('倒计时已暂停。');
+    return;
+  }
+
+  if (countdown.remainingMs <= 0) {
+    countdown.remainingMs = countdown.totalMs;
+  }
+
+  startCountdown();
+  showToast('倒计时已开始。');
+}
+
+function resetCountdownWithFeedback() {
+  resetCountdown();
+  showToast('倒计时已复位。');
+}
+
 function bindEvents() {
   ui.boardSelect.addEventListener('change', () => {
     appState.activeBoardId = ui.boardSelect.value;
@@ -1918,6 +2065,7 @@ function bindEvents() {
 
   document.addEventListener('keydown', handleGlobalKeyDown);
   document.addEventListener('fullscreenchange', syncPresentationModeState);
+  window.classScore.onWidgetAction(handleWidgetAction);
 }
 
 function getActiveBoard() {
@@ -5969,6 +6117,65 @@ function applyStudentDraftSupplements(board, students) {
   };
 }
 
+function applyStudentDraftOverrides(board, students) {
+  if (!board) {
+    return {
+      updatedCount: 0,
+      updatedFieldCount: 0,
+      createdGroupCount: 0
+    };
+  }
+
+  let updatedCount = 0;
+  let updatedFieldCount = 0;
+  let createdGroupCount = 0;
+
+  mergeStudentDrafts(students).forEach((draft) => {
+    const student = board.students.find((item) => item.name === draft.name);
+    if (!student) {
+      return;
+    }
+
+    let changed = false;
+    if (draft.studentNo && normalizeStudentTextField(student.studentNo, 24) !== draft.studentNo) {
+      student.studentNo = draft.studentNo;
+      updatedFieldCount += 1;
+      changed = true;
+    }
+    if (draft.seatNo && normalizeStudentTextField(student.seatNo, 12) !== draft.seatNo) {
+      student.seatNo = draft.seatNo;
+      updatedFieldCount += 1;
+      changed = true;
+    }
+    if (draft.note && normalizeStudentTextField(student.note, 60) !== draft.note) {
+      student.note = draft.note;
+      updatedFieldCount += 1;
+      changed = true;
+    }
+    if (draft.groupName) {
+      const groupResult = ensureGroupForImportedStudent(board, draft.groupName);
+      if (groupResult.created) {
+        createdGroupCount += 1;
+      }
+      if (groupResult.groupId && student.groupId !== groupResult.groupId) {
+        student.groupId = groupResult.groupId;
+        updatedFieldCount += 1;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      updatedCount += 1;
+    }
+  });
+
+  return {
+    updatedCount,
+    updatedFieldCount,
+    createdGroupCount
+  };
+}
+
 function addStudentsToBoard(board, students) {
   if (!board) {
     return {
@@ -7174,5 +7381,226 @@ function renderPetHomeModal(board, student) {
 
 function openPetHomeModal() {
   return petRuntime.openPetHomeModal();
+}
+
+function handleWidgetAction(payload) {
+  const action = typeof payload === 'string' ? payload : payload?.action;
+  if (!action) {
+    return;
+  }
+
+  if (action === 'random-pick') {
+    randomPickStudent();
+    return;
+  }
+
+  if (action === 'stopwatch-toggle') {
+    toggleStopwatchWithFeedback();
+    return;
+  }
+
+  if (action === 'stopwatch-reset') {
+    resetStopwatchWithFeedback();
+    return;
+  }
+
+  if (action === 'countdown-toggle') {
+    toggleCountdownWithFeedback();
+    return;
+  }
+
+  if (action === 'countdown-reset') {
+    resetCountdownWithFeedback();
+  }
+}
+
+function previewBatchAddStudents(students, options = {}) {
+  const board = getActiveBoard();
+  const normalizedStudents = mergeStudentDrafts(students);
+  if (normalizedStudents.length === 0) {
+    showToast(options.emptyMessage || '请先输入要添加的姓名。');
+    return false;
+  }
+
+  const {
+    freshStudents,
+    duplicateStudents,
+    supplementStudents,
+    supplementDetails,
+    conflictStudents,
+    skippedDuplicateStudents
+  } = analyzeStudentBatch(board, normalizedStudents);
+  const conflictChoices = buildImportConflictChoiceEntries([
+    ...supplementDetails,
+    ...conflictStudents
+  ]);
+  const conflictFieldCount = conflictChoices.reduce((sum, entry) => sum + entry.conflictFields.length, 0);
+  const hasBaseChanges = freshStudents.length > 0 || supplementStudents.length > 0;
+  const canApplyChanges = hasBaseChanges || conflictFieldCount > 0;
+  if (!canApplyChanges && skippedDuplicateStudents.length === 0) {
+    showToast(options.emptyMessage || '这些学生已经都存在于当前面板，且没有可补充的新资料。');
+    return false;
+  }
+
+  const groupCount = new Set([
+    ...freshStudents.map((student) => student.groupName),
+    ...supplementStudents.map((student) => student.groupName)
+  ].filter(Boolean)).size;
+  const enrichedCount = freshStudents.filter((student) => buildStudentDraftMeta(student)).length;
+  const conflictStudentCount = supplementDetails.filter((entry) => entry.conflicts.length > 0).length + conflictStudents.length;
+  const submitText = canApplyChanges
+    ? [
+      freshStudents.length > 0 ? `添加 ${freshStudents.length} 名学生` : '',
+      supplementStudents.length > 0 ? `补全 ${supplementStudents.length} 名资料` : '',
+      conflictFieldCount > 0 ? `处理 ${conflictFieldCount} 项冲突字段` : ''
+    ].filter(Boolean).join('并')
+    : '我知道了';
+  const sections = [
+    buildPreviewTagRow([
+      `新增 ${freshStudents.length} 人`,
+      supplementStudents.length > 0 ? `补全 ${supplementStudents.length} 人` : '无资料补全',
+      conflictStudentCount > 0 ? `存在冲突 ${conflictStudentCount} 人` : '无字段冲突',
+      skippedDuplicateStudents.length > 0 ? `跳过 ${skippedDuplicateStudents.length} 人` : (duplicateStudents.length > 0 ? '重复已处理' : '无重复'),
+      groupCount > 0 ? `涉及 ${groupCount} 个小组` : '无分组字段',
+      enrichedCount > 0 ? `${enrichedCount} 人带扩展信息` : '仅姓名'
+    ]),
+    buildPreviewStudentList(freshStudents, { title: '即将新增的学生' }),
+    supplementDetails.length > 0 ? buildPreviewResolutionList(supplementDetails, { title: '将补全到已有学生', limit: 8 }) : '',
+    conflictStudents.length > 0 ? buildPreviewResolutionList(conflictStudents, { title: '存在字段差异，默认保留原值', limit: 8 }) : '',
+    buildImportConflictChoiceSection(conflictChoices),
+    skippedDuplicateStudents.length > 0 ? buildPreviewStudentList(skippedDuplicateStudents, { title: '已存在且无新信息，将跳过', limit: 8 }) : '',
+    !canApplyChanges
+      ? '<div class="modal-danger-note">本次导入不会改动当前面板，以上内容仅用于说明哪些信息被跳过或保留原值。</div>'
+      : `<div class="modal-danger-note">${
+        duplicateStudents.length > 0
+          ? `${conflictFieldCount > 0 ? `检测到 ${conflictFieldCount} 项冲突字段；` : ''}同名学生会先补全当前为空的资料，冲突字段以你在下方的选择为准。导入前会先自动创建保护点。`
+          : '确认后会自动复用同名小组，缺失小组会自动创建；导入前会先自动创建保护点。'
+      }</div>`
+  ].filter(Boolean);
+
+  openModal({
+    title: options.sourceLabel ? `确认导入学生 · ${options.sourceLabel}` : '确认批量添加学生',
+    submitClassName: canApplyChanges ? 'mini-action mini-action-red' : 'mini-action',
+    submitText,
+    cancelText: '返回修改',
+    html: sections.join(''),
+    onSubmit: async (formData) => {
+      const overwriteStudents = collectImportConflictOverrideDrafts(formData, conflictChoices);
+      const willMutate = freshStudents.length > 0 || supplementStudents.length > 0 || overwriteStudents.length > 0;
+      if (!willMutate) {
+        showToast('本次未改动当前面板。');
+        return true;
+      }
+
+      await createProtectionPoint(`批量导入学生前 · ${board?.name || '当前面板'}`);
+      const supplementResult = applyStudentDraftSupplements(board, supplementStudents);
+      const overwriteResult = applyStudentDraftOverrides(board, overwriteStudents);
+      const result = addStudentsToBoard(board, freshStudents);
+      const totalCreatedGroupCount = supplementResult.createdGroupCount + overwriteResult.createdGroupCount + result.createdGroupCount;
+      const summary = [
+        result.addedCount > 0 ? `新增 ${result.addedCount} 名学生` : '',
+        supplementResult.updatedCount > 0 ? `补全 ${supplementResult.updatedCount} 名学生资料` : '',
+        overwriteResult.updatedFieldCount > 0 ? `采用导入值 ${overwriteResult.updatedFieldCount} 项字段` : ''
+      ].filter(Boolean).join('，');
+      const groupMessage = totalCreatedGroupCount > 0 ? `，并创建 ${totalCreatedGroupCount} 个小组` : '';
+      commitState(`已处理导入名单：${summary}${groupMessage}。`);
+    }
+  });
+  return false;
+}
+
+function renderRandomCard() {
+  syncRandomPickScope();
+  const board = getActiveBoard();
+  const state = normalizeRandomPickState(board);
+  const currentContext = board ? getRandomCandidateContext(board) : null;
+  const student = state?.studentId
+    ? board.students.find((item) => item.id === state.studentId)
+    : null;
+  const historyEntries = getRandomHistoryEntries(board, state);
+  const previewEntries = historyEntries.slice(0, MAX_RANDOM_HISTORY_PREVIEW);
+  const currentScope = currentContext?.scopeLabel || '当前面板全部学生';
+
+  if (!student && !state) {
+    ui.randomResultCard.innerHTML = `
+      <div>点击上方“随机点名”后，这里会显示抽中的学生。</div>
+      <div class="random-meta-row">
+        <span class="preview-tag">${escapeHtml(currentScope)}</span>
+        ${currentContext?.absentCount ? `<span class="preview-tag">已排除缺勤 ${currentContext.absentCount} 人</span>` : ''}
+      </div>
+      <div class="random-actions">
+        <button class="mini-action" type="button" data-action="reset-random-round">重置本轮</button>
+      </div>
+    `;
+    return;
+  }
+
+  ui.randomResultCard.innerHTML = `
+    <div class="random-title-row">
+      <strong>当前随机结果</strong>
+      <span class="preview-tag">${escapeHtml(state?.scopeLabel || currentScope)}</span>
+    </div>
+    <span class="random-name">${student ? escapeHtml(student.name) : '准备开始'}</span>
+    <span class="history-meta">
+      ${student
+        ? `所属小组：${escapeHtml(getGroupName(board, student.groupId))} · 抽取时间：${formatTimestamp(state.timestamp)}`
+        : '当前还没有抽中记录。'}
+    </span>
+    <div class="random-meta-row">
+      <span class="preview-tag">本轮已抽 ${historyEntries.length} 人</span>
+      <span class="preview-tag">本轮剩余 ${state?.remainingIds.length || 0} 人</span>
+      ${currentContext?.absentCount ? `<span class="preview-tag">已排除缺勤 ${currentContext.absentCount} 人</span>` : ''}
+    </div>
+    ${previewEntries.length > 0 ? `
+      <div class="random-history-strip">
+        ${previewEntries.map((entry) => `<span class="random-history-chip">${escapeHtml(entry.student.name)}</span>`).join('')}
+      </div>
+    ` : ''}
+    ${student ? `
+      <div class="selected-quick-score-cloud random-quick-score-cloud">
+        <span class="selected-quick-score-label">点名后快捷评分</span>
+        <div class="selected-quick-score-buttons">
+          ${renderQuickScoreButtons()}
+        </div>
+      </div>
+    ` : ''}
+    <div class="random-actions">
+      ${student ? `<button class="mini-action ${student.absent ? 'mini-action-orange' : ''}" type="button" data-action="toggle-random-absence">${student.absent ? '设为到场' : '设为缺勤'}</button>` : ''}
+      <button class="mini-action" type="button" data-action="show-random-history" ${historyEntries.length === 0 ? 'disabled' : ''}>查看本轮记录</button>
+      <button class="mini-action" type="button" data-action="reset-random-round">重置本轮</button>
+    </div>
+  `;
+}
+
+function handleRandomCardClick(event) {
+  const action = event.target.closest('[data-action]')?.dataset.action;
+  if (!action) {
+    return;
+  }
+
+  if (action === 'quick-score-delta') {
+    const delta = Math.round(Number(event.target.closest('[data-action]')?.dataset.delta) || 0);
+    applyDirectScoreDelta(delta);
+    return;
+  }
+
+  if (action === 'toggle-random-absence') {
+    const student = getSelectedStudent();
+    if (!student) {
+      return;
+    }
+    student.absent = !student.absent;
+    commitState(`${student.name} 已标记为${student.absent ? '缺勤' : '到场'}。`);
+    return;
+  }
+
+  if (action === 'reset-random-round') {
+    resetRandomPickRound();
+    return;
+  }
+
+  if (action === 'show-random-history') {
+    openRandomHistoryModal();
+  }
 }
 

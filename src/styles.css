@@ -1461,6 +1461,84 @@ textarea {
   color: var(--text-muted);
 }
 
+.import-conflict-list,
+.import-conflict-field-list {
+  display: grid;
+  gap: 12px;
+}
+
+.import-conflict-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(82, 139, 223, 0.12);
+  background: rgba(245, 251, 255, 0.82);
+}
+
+.import-conflict-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.import-conflict-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(82, 139, 223, 0.1);
+}
+
+.import-conflict-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.import-conflict-label {
+  color: var(--blue-deep);
+  font-weight: 800;
+}
+
+.import-conflict-copy small {
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.import-conflict-options {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.import-conflict-option {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(233, 243, 255, 0.9);
+  color: var(--blue-deep);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.import-conflict-option.is-import {
+  background: rgba(223, 248, 234, 0.92);
+  color: #157552;
+}
+
+.import-conflict-option input {
+  margin: 0;
+  accent-color: var(--blue);
+}
+
 .preview-meta {
   flex-shrink: 0;
   color: var(--text-muted);
@@ -2363,7 +2441,9 @@ textarea {
   }
 
   .manage-group-main,
-  .manage-member-item {
+  .manage-member-item,
+  .import-conflict-field,
+  .import-conflict-head {
     grid-template-columns: 1fr;
     display: grid;
   }
@@ -2489,6 +2569,17 @@ textarea {
   color: var(--text-muted);
   font-size: 13px;
   font-weight: 700;
+}
+
+.random-quick-score-cloud {
+  margin-top: 14px;
+}
+
+.random-quick-score-cloud .quick-score-pill {
+  min-width: 68px;
+  min-height: 40px;
+  padding: 0 14px;
+  box-shadow: 0 10px 18px rgba(74, 138, 212, 0.12);
 }
 
 .selected-quick-score-buttons,

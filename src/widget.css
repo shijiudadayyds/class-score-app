@@ -54,7 +54,7 @@ body.is-pressing {
 .widget-card {
   position: relative;
   width: 172px;
-  height: 214px;
+  height: 248px;
   display: grid;
   justify-items: center;
   align-content: start;
@@ -517,9 +517,9 @@ body.is-dragging .widget-status {
 .widget-status {
   position: relative;
   width: 160px;
-  min-height: 62px;
+  min-height: 96px;
   display: grid;
-  gap: 4px;
+  gap: 5px;
   padding: 10px 12px 12px;
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.22);
@@ -579,6 +579,43 @@ body.is-dragging .widget-status {
   font-size: 12px;
   font-weight: 700;
   color: rgba(255, 255, 255, 0.86);
+}
+
+.widget-action-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.widget-action-pill {
+  min-width: 0;
+  height: 30px;
+  border: 0;
+  border-radius: 12px;
+  cursor: inherit;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.widget-action-pill:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.widget-action-pill.is-active {
+  background: rgba(255, 255, 255, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28), 0 8px 18px rgba(20, 50, 96, 0.16);
+}
+
+.widget-action-pill.is-accent {
+  background: rgba(255, 246, 188, 0.28);
+  color: #fff7df;
 }
 
 .widget-menu {

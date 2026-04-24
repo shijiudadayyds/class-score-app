@@ -5,6 +5,9 @@ const widgetStatus = document.getElementById('widgetStatus');
 const widgetBoardName = document.getElementById('widgetBoardName');
 const widgetPrimaryText = document.getElementById('widgetPrimaryText');
 const widgetSecondaryText = document.getElementById('widgetSecondaryText');
+const widgetRandomButton = document.getElementById('widgetRandomButton');
+const widgetStopwatchButton = document.getElementById('widgetStopwatchButton');
+const widgetCountdownButton = document.getElementById('widgetCountdownButton');
 const DRAG_THRESHOLD = 6;
 
 let dragSession = null;
@@ -114,6 +117,12 @@ menuButton.addEventListener('click', handleActionClick(() => {
   window.classScore.openWidgetMenu();
 }));
 
+[widgetRandomButton, widgetStopwatchButton, widgetCountdownButton].forEach((button) => {
+  button?.addEventListener('click', handleActionClick(() => {
+    window.classScore.triggerWidgetAction(button.dataset.widgetAction || '');
+  }));
+});
+
 document.addEventListener('contextmenu', (event) => {
   event.preventDefault();
   window.classScore.openWidgetMenu();
@@ -132,6 +141,11 @@ window.classScore.onWidgetState((payload) => {
   widgetSecondaryText.textContent = payload.mode === 'idle'
     ? (payload.secondaryText || '0 人待命')
     : (payload.primaryText || '课堂工具运行中');
+  widgetStopwatchButton.classList.toggle('is-active', payload.mode === 'stopwatch');
+  widgetCountdownButton.classList.toggle('is-active', payload.mode === 'countdown');
+  widgetRandomButton.classList.toggle('is-accent', payload.mode === 'idle' && Boolean(payload.selectedStudentName));
+  widgetStopwatchButton.title = payload.mode === 'stopwatch' ? '暂停计时器' : '开始计时器';
+  widgetCountdownButton.title = payload.mode === 'countdown' ? '暂停倒计时' : '开始倒计时';
   menuButton.title = positionLocked ? '更多操作（位置已锁定）' : '更多操作';
   toggleButton.title = payload.boardName
     ? `${payload.boardName} · ${payload.primaryText || '待命'}${payload.secondaryText ? ` · ${payload.secondaryText}` : ''}`

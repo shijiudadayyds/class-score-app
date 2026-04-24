@@ -9,7 +9,7 @@ const DATA_FILE = path.join(app.getPath('userData'), 'class-score-data.json');
 const WIDGET_STATE_FILE = path.join(app.getPath('userData'), 'widget-window.json');
 const SAFETY_SNAPSHOT_FILE = path.join(app.getPath('userData'), 'class-score-safety-snapshots.json');
 const WIDGET_WIDTH = 172;
-const WIDGET_HEIGHT = 214;
+const WIDGET_HEIGHT = 248;
 const WIDGET_EDGE_SNAP_THRESHOLD = 26;
 const STEP_OPTIONS = [1, 2, 5, 10];
 const MAX_SAFETY_SNAPSHOTS = 12;
@@ -960,6 +960,43 @@ function pushWidgetState(payload = lastWidgetPayload) {
   });
 }
 
+function dispatchWidgetAction(action) {
+  if (!action || !mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  mainWindow.webContents.send('app:widget-action', { action });
+}
+
+function buildWidgetActionMenuItems() {
+  const mode = lastWidgetPayload?.mode || 'idle';
+  const countdownRunning = mode === 'countdown';
+  const stopwatchRunning = mode === 'stopwatch';
+
+  return [
+    {
+      label: '随机点名',
+      click: () => dispatchWidgetAction('random-pick')
+    },
+    {
+      label: countdownRunning ? '暂停倒计时' : '开始倒计时',
+      click: () => dispatchWidgetAction('countdown-toggle')
+    },
+    {
+      label: '重置倒计时',
+      click: () => dispatchWidgetAction('countdown-reset')
+    },
+    {
+      label: stopwatchRunning ? '暂停计时器' : '开始计时器',
+      click: () => dispatchWidgetAction('stopwatch-toggle')
+    },
+    {
+      label: '重置计时器',
+      click: () => dispatchWidgetAction('stopwatch-reset')
+    }
+  ];
+}
+
 function setWidgetPositionLocked(locked) {
   widgetPositionLocked = Boolean(locked);
   queueSaveWidgetBounds();
@@ -1407,6 +1444,10 @@ function registerIpc() {
     endWidgetDrag();
   });
 
+  ipcMain.on('widget:action', (_event, payload) => {
+    dispatchWidgetAction(payload?.action);
+  });
+
   ipcMain.on('main:show', () => {
     toggleMainWindow(true);
   });
@@ -1421,6 +1462,8 @@ function registerIpc() {
         label: '固定显示主窗口',
         click: () => toggleMainWindow(true)
       },
+      { type: 'separator' },
+      ...buildWidgetActionMenuItems(),
       { type: 'separator' },
       {
         label: '锁定位置',
