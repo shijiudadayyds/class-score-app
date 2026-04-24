@@ -115,6 +115,14 @@ widgetShell.addEventListener('lostpointercapture', (event) => {
   finishDrag(event.pointerId);
 });
 
+widgetShell.addEventListener('mouseenter', () => {
+  window.classScore.setWidgetHover(true);
+});
+
+widgetShell.addEventListener('mouseleave', () => {
+  window.classScore.setWidgetHover(false);
+});
+
 toggleButton.addEventListener('click', handleActionClick(() => {
   window.classScore.toggleMainWindow();
 }));
@@ -165,6 +173,9 @@ window.classScore.onWidgetState((payload) => {
   positionLocked = Boolean(payload.positionLocked);
   widgetExpanded = Boolean(payload.expanded);
   widgetShell.classList.toggle('is-locked', positionLocked);
+  widgetShell.classList.toggle('is-edge-hidden', Boolean(payload.dockHidden));
+  widgetShell.classList.toggle('is-docked-left', payload.dockedEdge === 'left');
+  widgetShell.classList.toggle('is-docked-right', payload.dockedEdge === 'right');
   toggleButton.className = `widget-button ${modeClass}`;
   widgetStatus.className = `widget-status ${modeClass}${positionLocked ? ' is-locked' : ''}`;
   widgetBoardName.textContent = payload.boardName || '班级面板';

@@ -12,6 +12,8 @@ const WIDGET_WIDTH = 196;
 const WIDGET_COLLAPSED_HEIGHT = 224;
 const WIDGET_EXPANDED_HEIGHT = 360;
 const WIDGET_EDGE_SNAP_THRESHOLD = 26;
+const WIDGET_EDGE_HIDE_VISIBLE_WIDTH = 72;
+const WIDGET_EDGE_HIDE_DELAY_MS = 260;
 const MAX_SAFETY_SNAPSHOTS = 12;
 const DEFAULT_PLUS_TEMPLATES = [
   { id: 'plus-speaking', name: '积极发言', value: 2 },
@@ -36,9 +38,12 @@ let mainWindow;
 let widgetWindow;
 let isQuitting = false;
 let widgetStateWriteTimer;
+let widgetDockHideTimer;
 let widgetDragState = null;
 let widgetPositionLocked = false;
 let widgetExpanded = false;
+let widgetDockSide = '';
+let widgetDockRevealed = false;
 let lastWidgetPayload = null;
 
 app.setAppUserModelId(APP_ID);
@@ -810,6 +815,15 @@ function beginWidgetDrag(candidate = {}) {
     return;
   }
 
+  clearWidgetDockHideTimer();
+  if (widgetDockSide) {
+    const undockedBounds = getWidgetDockedBounds(widgetWindow.getBounds(), widgetDockSide, true, widgetExpanded);
+    widgetDockSide = '';
+    widgetDockRevealed = false;
+    widgetWindow.setBounds(clampWidgetBounds(undockedBounds, widgetExpanded));
+    pushWidgetState();
+  }
+
   const screenX = Number(candidate.screenX);
   const screenY = Number(candidate.screenY);
   if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) {
@@ -844,13 +858,128 @@ function updateWidgetDrag(candidate = {}) {
   widgetWindow.setBounds(nextBounds);
 }
 
+function clearWidgetDockHideTimer() {
+  clearTimeout(widgetDockHideTimer);
+  widgetDockHideTimer = null;
+}
+
+function getWidgetDisplayForBounds(candidate, expanded = widgetExpanded) {
+  const visibleBounds = clampWidgetBounds(candidate, expanded);
+  const display = screen.getDisplayNearestPoint({
+    x: visibleBounds.x + Math.round(visibleBounds.width / 2),
+    y: visibleBounds.y + Math.round(visibleBounds.height / 2)
+  });
+
+  return {
+    display,
+    visibleBounds
+  };
+}
+
+function getWidgetDockSideForBounds(candidate, expanded = widgetExpanded) {
+  const { display, visibleBounds } = getWidgetDisplayForBounds(candidate, expanded);
+  const { workArea } = display;
+
+  if (Math.abs(visibleBounds.x - workArea.x) <= WIDGET_EDGE_SNAP_THRESHOLD) {
+    return 'left';
+  }
+
+  if (Math.abs((workArea.x + workArea.width) - (visibleBounds.x + visibleBounds.width)) <= WIDGET_EDGE_SNAP_THRESHOLD) {
+    return 'right';
+  }
+
+  return '';
+}
+
+function getWidgetDockedBounds(candidate, dockSide = widgetDockSide, revealed = widgetDockRevealed, expanded = widgetExpanded) {
+  const { display, visibleBounds } = getWidgetDisplayForBounds(candidate, expanded);
+  const { workArea } = display;
+
+  if (!dockSide) {
+    return visibleBounds;
+  }
+
+  return {
+    ...visibleBounds,
+    x: dockSide === 'left'
+      ? (revealed ? workArea.x : workArea.x - visibleBounds.width + WIDGET_EDGE_HIDE_VISIBLE_WIDTH)
+      : (revealed ? workArea.x + workArea.width - visibleBounds.width : workArea.x + workArea.width - WIDGET_EDGE_HIDE_VISIBLE_WIDTH)
+  };
+}
+
+function getWidgetSavedBounds() {
+  if (!widgetWindow || widgetWindow.isDestroyed()) {
+    return getDefaultWidgetBounds(widgetExpanded);
+  }
+
+  return widgetDockSide
+    ? getWidgetDockedBounds(widgetWindow.getBounds(), widgetDockSide, false, widgetExpanded)
+    : clampWidgetBounds(widgetWindow.getBounds(), widgetExpanded);
+}
+
+function applyWidgetDockState(candidate = widgetWindow?.getBounds()) {
+  if (!widgetWindow || widgetWindow.isDestroyed() || !candidate) {
+    return;
+  }
+
+  const nextBounds = widgetDockSide
+    ? getWidgetDockedBounds(candidate, widgetDockSide, widgetDockRevealed, widgetExpanded)
+    : clampWidgetBounds(candidate, widgetExpanded);
+
+  widgetWindow.setBounds(nextBounds);
+}
+
+function setWidgetDockReveal(revealed) {
+  if (!widgetWindow || widgetWindow.isDestroyed() || !widgetDockSide) {
+    return;
+  }
+
+  clearWidgetDockHideTimer();
+  widgetDockRevealed = Boolean(revealed);
+  applyWidgetDockState(widgetWindow.getBounds());
+  queueSaveWidgetBounds();
+  pushWidgetState();
+}
+
+function scheduleWidgetDockHide() {
+  if (!widgetDockSide || !widgetDockRevealed || widgetDragState) {
+    return;
+  }
+
+  clearWidgetDockHideTimer();
+  widgetDockHideTimer = setTimeout(() => {
+    setWidgetDockReveal(false);
+  }, WIDGET_EDGE_HIDE_DELAY_MS);
+}
+
+function setWidgetHovering(hovering) {
+  if (!widgetDockSide) {
+    return;
+  }
+
+  if (hovering) {
+    setWidgetDockReveal(true);
+    return;
+  }
+
+  scheduleWidgetDockHide();
+}
+
 function endWidgetDrag() {
   if (widgetWindow && !widgetWindow.isDestroyed() && widgetDragState) {
     const currentBounds = widgetWindow.getBounds();
     const snappedBounds = snapWidgetBounds(currentBounds);
-    if (snappedBounds.x !== currentBounds.x || snappedBounds.y !== currentBounds.y) {
-      widgetWindow.setBounds(snappedBounds);
+    widgetDockSide = getWidgetDockSideForBounds(snappedBounds);
+    widgetDockRevealed = false;
+    clearWidgetDockHideTimer();
+    const nextBounds = widgetDockSide
+      ? getWidgetDockedBounds(snappedBounds, widgetDockSide, false, widgetExpanded)
+      : snappedBounds;
+    if (nextBounds.x !== currentBounds.x || nextBounds.y !== currentBounds.y) {
+      widgetWindow.setBounds(nextBounds);
     }
+    queueSaveWidgetBounds();
+    pushWidgetState();
   }
   widgetDragState = null;
 }
@@ -920,10 +1049,16 @@ async function readWidgetBounds() {
     const parsed = JSON.parse(raw);
     widgetPositionLocked = Boolean(parsed?.locked);
     widgetExpanded = Boolean(parsed?.expanded);
-    return clampWidgetBounds(parsed, widgetExpanded);
+    widgetDockSide = parsed?.dockSide === 'left' || parsed?.dockSide === 'right' ? parsed.dockSide : '';
+    widgetDockRevealed = false;
+    return widgetDockSide
+      ? getWidgetDockedBounds(parsed, widgetDockSide, false, widgetExpanded)
+      : clampWidgetBounds(parsed, widgetExpanded);
   } catch (error) {
     widgetPositionLocked = false;
     widgetExpanded = false;
+    widgetDockSide = '';
+    widgetDockRevealed = false;
     return getDefaultWidgetBounds();
   }
 }
@@ -935,11 +1070,11 @@ function queueSaveWidgetBounds() {
 
   clearTimeout(widgetStateWriteTimer);
   widgetStateWriteTimer = setTimeout(async () => {
-    const bounds = clampWidgetBounds(widgetWindow.getBounds(), widgetExpanded);
+    const bounds = getWidgetSavedBounds();
     await fs.mkdir(path.dirname(WIDGET_STATE_FILE), { recursive: true });
     await fs.writeFile(
       WIDGET_STATE_FILE,
-      `${JSON.stringify({ ...bounds, locked: widgetPositionLocked, expanded: widgetExpanded }, null, 2)}\n`,
+      `${JSON.stringify({ ...bounds, locked: widgetPositionLocked, expanded: widgetExpanded, dockSide: widgetDockSide }, null, 2)}\n`,
       'utf8'
     );
   }, 180);
@@ -962,7 +1097,9 @@ function pushWidgetState(payload = lastWidgetPayload) {
   widgetWindow.webContents.send('widget:state', {
     ...safePayload,
     positionLocked: widgetPositionLocked,
-    expanded: widgetExpanded
+    expanded: widgetExpanded,
+    dockedEdge: widgetDockSide,
+    dockHidden: Boolean(widgetDockSide) && !widgetDockRevealed
   });
 }
 
@@ -1019,14 +1156,14 @@ function setWidgetExpanded(expanded) {
 
   const currentBounds = widgetWindow.getBounds();
   const nextHeight = getWidgetHeight(nextExpanded);
-  const nextBounds = clampWidgetBounds(
-    {
-      ...currentBounds,
-      height: nextHeight,
-      y: currentBounds.y + currentBounds.height - nextHeight
-    },
-    nextExpanded
-  );
+  const nextCandidate = {
+    ...currentBounds,
+    height: nextHeight,
+    y: currentBounds.y + currentBounds.height - nextHeight
+  };
+  const nextBounds = widgetDockSide
+    ? getWidgetDockedBounds(nextCandidate, widgetDockSide, widgetDockRevealed, nextExpanded)
+    : clampWidgetBounds(nextCandidate, nextExpanded);
 
   widgetWindow.setBounds(nextBounds);
   queueSaveWidgetBounds();
@@ -1038,8 +1175,12 @@ function resetWidgetWindowPosition() {
     return;
   }
 
+  clearWidgetDockHideTimer();
+  widgetDockSide = '';
+  widgetDockRevealed = false;
   widgetWindow.setBounds(getDefaultWidgetBounds(widgetExpanded));
   queueSaveWidgetBounds();
+  pushWidgetState();
 }
 
 function createMainWindow() {
@@ -1476,6 +1617,10 @@ function registerIpc() {
 
   ipcMain.on('widget:set-expanded', (_event, payload) => {
     setWidgetExpanded(Boolean(payload?.expanded));
+  });
+
+  ipcMain.on('widget:set-hover', (_event, payload) => {
+    setWidgetHovering(Boolean(payload?.hovering));
   });
 
   ipcMain.on('widget:action', (_event, payload) => {

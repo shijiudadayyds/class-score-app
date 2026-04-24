@@ -63,6 +63,7 @@ body.is-pressing {
   gap: 10px;
   padding-top: 8px;
   padding-bottom: 12px;
+  transition: transform 180ms ease, min-height 180ms ease;
 }
 
 .widget-button {
@@ -740,6 +741,14 @@ body.is-dragging .widget-status {
 
 .widget-shell.is-expanded .widget-card {
   min-height: 296px;
+}
+
+.widget-shell.is-edge-hidden.is-docked-left .widget-card {
+  transform: translateX(-24px);
+}
+
+.widget-shell.is-edge-hidden.is-docked-right .widget-card {
+  transform: translateX(24px);
 }
 
 @keyframes cat-float {
