@@ -62,6 +62,9 @@ widgetShell.addEventListener('pointerdown', (event) => {
   if (positionLocked) {
     return;
   }
+  if (event.target.closest('[data-no-drag="true"]')) {
+    return;
+  }
 
   dragSession = {
     pointerId: event.pointerId,
@@ -118,9 +121,16 @@ menuButton.addEventListener('click', handleActionClick(() => {
 }));
 
 [widgetRandomButton, widgetStopwatchButton, widgetCountdownButton].forEach((button) => {
+  button?.addEventListener('pointerdown', (event) => {
+    event.stopPropagation();
+  });
   button?.addEventListener('click', handleActionClick(() => {
     window.classScore.triggerWidgetAction(button.dataset.widgetAction || '');
   }));
+});
+
+menuButton.addEventListener('pointerdown', (event) => {
+  event.stopPropagation();
 });
 
 document.addEventListener('contextmenu', (event) => {
