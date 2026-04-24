@@ -1140,31 +1140,51 @@ function buildStudentDraftMeta(student) {
   return tags.join(' · ');
 }
 
-function buildStudentDraftSupplement(board, existingStudent, draft) {
+function getImportedStudentGroupName(board, student) {
+  const group = getGroupById(board, student?.groupId);
+  return normalizeStudentTextField(group?.name, 24);
+}
+
+function buildStudentImportResolution(board, existingStudent, draft) {
   if (!existingStudent || !draft) {
-    return null;
+    return {
+      name: draft?.name || existingStudent?.name || '',
+      supplement: null,
+      additions: [],
+      conflicts: []
+    };
   }
 
   const supplement = {
     name: draft.name
   };
+  const additions = [];
+  const conflicts = [];
+  const compareField = (field, label, currentValue, importedValue) => {
+    if (!importedValue) {
+      return;
+    }
+    if (!currentValue) {
+      supplement[field] = importedValue;
+      additions.push(`${label}补为“${importedValue}”`);
+      return;
+    }
+    if (currentValue !== importedValue) {
+      conflicts.push(`${label}保留“${currentValue}”，导入为“${importedValue}”`);
+    }
+  };
 
-  if (!normalizeStudentTextField(existingStudent.studentNo, 24) && draft.studentNo) {
-    supplement.studentNo = draft.studentNo;
-  }
-  if (!normalizeStudentTextField(existingStudent.seatNo, 12) && draft.seatNo) {
-    supplement.seatNo = draft.seatNo;
-  }
-  if (!normalizeStudentTextField(existingStudent.note, 60) && draft.note) {
-    supplement.note = draft.note;
-  }
+  compareField('studentNo', '学号', normalizeStudentTextField(existingStudent.studentNo, 24), draft.studentNo);
+  compareField('seatNo', '座号', normalizeStudentTextField(existingStudent.seatNo, 12), draft.seatNo);
+  compareField('note', '备注', normalizeStudentTextField(existingStudent.note, 60), draft.note);
+  compareField('groupName', '小组', getImportedStudentGroupName(board, existingStudent), draft.groupName);
 
-  const hasValidGroup = existingStudent.groupId && getGroupById(board, existingStudent.groupId);
-  if (!hasValidGroup && draft.groupName) {
-    supplement.groupName = draft.groupName;
-  }
-
-  return buildStudentDraftMeta(supplement) ? supplement : null;
+  return {
+    name: draft.name,
+    supplement: buildStudentDraftMeta(supplement) ? supplement : null,
+    additions,
+    conflicts
+  };
 }
 
 function analyzeStudentBatch(board, students) {
@@ -1173,6 +1193,8 @@ function analyzeStudentBatch(board, students) {
   const freshStudents = [];
   const duplicateStudents = [];
   const supplementStudents = [];
+  const supplementDetails = [];
+  const conflictStudents = [];
   const skippedDuplicateStudents = [];
 
   normalizedStudents.forEach((student) => {
@@ -1183,9 +1205,25 @@ function analyzeStudentBatch(board, students) {
     }
 
     duplicateStudents.push(student);
-    const supplement = buildStudentDraftSupplement(board, existingStudent, student);
-    if (supplement) {
-      supplementStudents.push(supplement);
+    const resolution = buildStudentImportResolution(board, existingStudent, student);
+    if (resolution.supplement) {
+      supplementStudents.push(resolution.supplement);
+      supplementDetails.push({
+        name: student.name,
+        additions: resolution.additions,
+        conflicts: resolution.conflicts,
+        status: resolution.conflicts.length > 0 ? '补全并保留部分原值' : '补全资料'
+      });
+      return;
+    }
+
+    if (resolution.conflicts.length > 0) {
+      conflictStudents.push({
+        name: student.name,
+        additions: [],
+        conflicts: resolution.conflicts,
+        status: '保留原值'
+      });
       return;
     }
 
@@ -1197,6 +1235,8 @@ function analyzeStudentBatch(board, students) {
     freshStudents,
     duplicateStudents,
     supplementStudents,
+    supplementDetails,
+    conflictStudents,
     skippedDuplicateStudents,
     freshNames: freshStudents.map((student) => student.name),
     duplicateNames: duplicateStudents.map((student) => student.name),
@@ -1259,6 +1299,44 @@ function buildPreviewStudentList(students, options = {}) {
             <span class="preview-meta">${escapeHtml(buildStudentDraftMeta(student) || `#${index + 1}`)}</span>
           </li>
         `).join('')}
+      </ul>
+      ${hiddenCount > 0 ? `<p class="modal-help">还有 ${hiddenCount} 项未展开显示。</p>` : ''}
+    </div>
+  `;
+}
+
+function buildPreviewResolutionList(entries, options = {}) {
+  const title = options.title || '处理详情';
+  const items = Array.isArray(entries) ? entries.filter((entry) => entry?.name) : [];
+  if (items.length === 0) {
+    return '';
+  }
+
+  const visibleItems = items.slice(0, options.limit || MAX_PREVIEW_NAMES);
+  const hiddenCount = Math.max(0, items.length - visibleItems.length);
+
+  return `
+    <div class="preview-summary">
+      <strong>${escapeHtml(title)}</strong>
+      <ul class="preview-list preview-detail-list">
+        ${visibleItems.map((entry, index) => {
+          const detailLines = [
+            ...(Array.isArray(entry.additions) ? entry.additions.map((line) => ({ text: `将补：${line}`, tone: 'normal' })) : []),
+            ...(Array.isArray(entry.conflicts) ? entry.conflicts.map((line) => ({ text: `保留原值：${line}`, tone: 'warning' })) : []),
+            ...(Array.isArray(entry.notes) ? entry.notes.map((line) => ({ text: line, tone: 'muted' })) : [])
+          ];
+          return `
+            <li>
+              <div class="preview-item-copy">
+                <strong>${escapeHtml(entry.name)}</strong>
+                ${detailLines.length > 0
+                  ? detailLines.map((line) => `<p class="preview-item-line ${line.tone === 'warning' ? 'is-warning' : line.tone === 'muted' ? 'is-muted' : ''}">${escapeHtml(line.text)}</p>`).join('')
+                  : `<p class="preview-empty">暂无额外说明</p>`}
+              </div>
+              <span class="preview-meta">${escapeHtml(entry.status || `#${index + 1}`)}</span>
+            </li>
+          `;
+        }).join('')}
       </ul>
       ${hiddenCount > 0 ? `<p class="modal-help">还有 ${hiddenCount} 项未展开显示。</p>` : ''}
     </div>
@@ -5659,9 +5737,12 @@ function previewBatchAddStudents(students, options = {}) {
     freshStudents,
     duplicateStudents,
     supplementStudents,
+    supplementDetails,
+    conflictStudents,
     skippedDuplicateStudents
   } = analyzeStudentBatch(board, normalizedStudents);
-  if (freshStudents.length === 0 && supplementStudents.length === 0) {
+  const hasChanges = freshStudents.length > 0 || supplementStudents.length > 0;
+  if (!hasChanges && conflictStudents.length === 0 && skippedDuplicateStudents.length === 0) {
     showToast(options.emptyMessage || '这些学生已经都存在于当前面板，且没有可补充的新资料。');
     return false;
   }
@@ -5671,30 +5752,41 @@ function previewBatchAddStudents(students, options = {}) {
     ...supplementStudents.map((student) => student.groupName)
   ].filter(Boolean)).size;
   const enrichedCount = freshStudents.filter((student) => buildStudentDraftMeta(student)).length;
-  const submitText = [
-    freshStudents.length > 0 ? `添加 ${freshStudents.length} 名学生` : '',
-    supplementStudents.length > 0 ? `补全 ${supplementStudents.length} 名资料` : ''
-  ].filter(Boolean).join('并');
+  const conflictCount = supplementDetails.filter((entry) => entry.conflicts.length > 0).length + conflictStudents.length;
+  const submitText = hasChanges
+    ? [
+      freshStudents.length > 0 ? `添加 ${freshStudents.length} 名学生` : '',
+      supplementStudents.length > 0 ? `补全 ${supplementStudents.length} 名资料` : ''
+    ].filter(Boolean).join('并')
+    : '我知道了';
 
   openActionPreviewModal({
     title: options.sourceLabel ? `确认导入学生 · ${options.sourceLabel}` : '确认批量添加学生',
+    submitClassName: hasChanges ? 'mini-action mini-action-red' : 'mini-action',
     submitText,
     tags: [
       `新增 ${freshStudents.length} 人`,
       supplementStudents.length > 0 ? `补全 ${supplementStudents.length} 人` : '无资料补全',
+      conflictCount > 0 ? `保留原值 ${conflictCount} 人` : '无字段差异',
       skippedDuplicateStudents.length > 0 ? `跳过 ${skippedDuplicateStudents.length} 人` : (duplicateStudents.length > 0 ? '重复已处理' : '无重复'),
       groupCount > 0 ? `涉及 ${groupCount} 个小组` : '无分组字段',
       enrichedCount > 0 ? `${enrichedCount} 人带扩展信息` : '仅姓名'
     ],
     nameListHtml: `
       ${buildPreviewStudentList(freshStudents, { title: '即将新增的学生' })}
-      ${supplementStudents.length > 0 ? buildPreviewStudentList(supplementStudents, { title: '将补全到已有学生', limit: 8 }) : ''}
+      ${supplementDetails.length > 0 ? buildPreviewResolutionList(supplementDetails, { title: '将补全到已有学生', limit: 8 }) : ''}
+      ${conflictStudents.length > 0 ? buildPreviewResolutionList(conflictStudents, { title: '存在字段差异，已保留原值', limit: 8 }) : ''}
       ${skippedDuplicateStudents.length > 0 ? buildPreviewStudentList(skippedDuplicateStudents, { title: '已存在且无新信息，将跳过', limit: 8 }) : ''}
     `,
-    warningText: duplicateStudents.length > 0
-      ? '同名学生只会补全当前为空的资料，不会覆盖已填写内容。若识别到新的小组字段，确认后会自动复用同名小组或补建小组。'
+    warningText: !hasChanges
+      ? '本次导入不会改动当前面板，以上内容仅用于说明哪些信息被跳过或保留原值。'
+      : duplicateStudents.length > 0
+      ? `${conflictCount > 0 ? `检测到 ${conflictCount} 名同名学生存在字段差异；` : ''}同名学生只会补全当前为空的资料，不会覆盖已填写内容。若识别到新的小组字段，确认后会自动复用同名小组或补建小组。`
       : (groupCount > 0 ? '确认后会自动复用同名小组，缺失小组会自动创建。' : ''),
     onConfirm: async () => {
+      if (!hasChanges) {
+        return true;
+      }
       const supplementResult = applyStudentDraftSupplements(board, supplementStudents);
       const result = addStudentsToBoard(board, freshStudents);
       const totalCreatedGroupCount = supplementResult.createdGroupCount + result.createdGroupCount;

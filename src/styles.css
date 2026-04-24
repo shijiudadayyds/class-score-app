@@ -1436,7 +1436,33 @@ textarea {
   border: 1px solid rgba(82, 139, 223, 0.12);
 }
 
+.preview-detail-list li {
+  align-items: flex-start;
+}
+
+.preview-item-copy {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 6px;
+}
+
+.preview-item-line {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.preview-item-line.is-warning {
+  color: var(--red-deep);
+}
+
+.preview-item-line.is-muted {
+  color: var(--text-muted);
+}
+
 .preview-meta {
+  flex-shrink: 0;
   color: var(--text-muted);
   font-size: 13px;
 }
