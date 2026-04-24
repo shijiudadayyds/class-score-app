@@ -2218,6 +2218,446 @@ textarea {
   gap: 12px;
 }
 
+.lottery-student-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 20px 22px;
+  border-radius: 26px;
+  border: 1px solid rgba(82, 139, 223, 0.14);
+  background:
+    radial-gradient(circle at right top, rgba(255, 255, 255, 0.94), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(237, 247, 255, 0.96));
+  box-shadow: 0 18px 34px rgba(74, 138, 212, 0.12);
+}
+
+.lottery-student-summary h3 {
+  margin: 6px 0 0;
+  font-size: 32px;
+  color: var(--blue-deep);
+}
+
+.lottery-score-pill {
+  min-width: 124px;
+  min-height: 84px;
+  padding: 12px 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 24px;
+  font-size: 34px;
+  font-weight: 900;
+  background: rgba(74, 144, 238, 0.14);
+}
+
+.lottery-score-pill.positive {
+  color: var(--green-deep);
+  background: rgba(16, 168, 132, 0.14);
+}
+
+.lottery-score-pill.negative {
+  color: var(--red-deep);
+  background: rgba(226, 80, 80, 0.14);
+}
+
+.lottery-score-pill.neutral {
+  color: var(--blue-deep);
+  background: rgba(74, 144, 238, 0.14);
+}
+
+.lottery-wheel-shell {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+  padding: 22px;
+  border-radius: 28px;
+  border: 1px solid rgba(82, 139, 223, 0.14);
+  background:
+    radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.9), transparent 24%),
+    linear-gradient(145deg, rgba(247, 252, 255, 0.98), rgba(231, 243, 255, 0.95));
+  box-shadow: 0 20px 44px rgba(55, 106, 190, 0.12);
+}
+
+.lottery-wheel-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+}
+
+.lottery-wheel-pointer {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 0;
+  height: 0;
+  z-index: 4;
+  transform: translateX(-50%);
+  border-left: 18px solid transparent;
+  border-right: 18px solid transparent;
+  border-bottom: 42px solid #f48b57;
+  filter: drop-shadow(0 10px 18px rgba(239, 127, 71, 0.24));
+}
+
+.lottery-wheel-pointer::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 30px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transform: translateX(-50%);
+  box-shadow: 0 0 0 4px rgba(244, 139, 87, 0.18);
+}
+
+.lottery-wheel-track {
+  --lottery-wheel-size: 320px;
+  position: relative;
+  width: var(--lottery-wheel-size);
+  height: var(--lottery-wheel-size);
+  border-radius: 50%;
+  overflow: hidden;
+  transform: rotate(0deg);
+  border: 10px solid rgba(255, 255, 255, 0.94);
+  background: conic-gradient(var(--lottery-wheel-gradient));
+  box-shadow:
+    0 24px 40px rgba(53, 104, 189, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+
+.lottery-wheel-track::before {
+  content: '';
+  position: absolute;
+  inset: 14px;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.34);
+  opacity: 0.9;
+}
+
+.lottery-wheel-track::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(53, 104, 189, 0.12);
+}
+
+.lottery-wheel-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 96px;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  text-align: center;
+  transform:
+    translate(-50%, -50%)
+    rotate(var(--lottery-angle))
+    translateY(calc(var(--lottery-wheel-size) * -0.35))
+    rotate(var(--lottery-angle-inverse));
+  color: #1f467d;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.72);
+  z-index: 2;
+}
+
+.lottery-wheel-label em {
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.lottery-wheel-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 16px;
+  font-weight: 800;
+  z-index: 1;
+}
+
+.lottery-wheel-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  width: 102px;
+  height: 102px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  border-radius: 50%;
+  color: var(--white);
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.26), transparent 30%),
+    linear-gradient(135deg, #386fe0, #214a9e);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 18px 34px rgba(33, 74, 158, 0.28);
+}
+
+.lottery-wheel-center strong {
+  display: block;
+  font-size: 32px;
+  line-height: 1;
+}
+
+.lottery-wheel-center span {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.92;
+}
+
+.lottery-wheel-shell.is-spinning .lottery-wheel-center {
+  animation: lottery-center-pulse 720ms ease-in-out infinite alternate;
+}
+
+.lottery-wheel-panel {
+  display: grid;
+  gap: 14px;
+  align-content: center;
+}
+
+.lottery-status {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(82, 139, 223, 0.12);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--blue-deep);
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.lottery-action-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lottery-result-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  color: var(--white);
+  background:
+    radial-gradient(circle at 24% 22%, rgba(255, 255, 255, 0.2), transparent 24%),
+    linear-gradient(135deg, #ff9c5c, #f15e7d);
+  box-shadow: 0 20px 34px rgba(240, 111, 111, 0.24);
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.lottery-result-card[hidden] {
+  display: none;
+}
+
+.lottery-result-card.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.lottery-result-kicker {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  opacity: 0.88;
+}
+
+.lottery-result-card strong {
+  font-size: 28px;
+  line-height: 1.2;
+}
+
+.lottery-result-note {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.lottery-result-card small {
+  opacity: 0.9;
+}
+
+.lottery-modal-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lottery-section-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(82, 139, 223, 0.12);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.lottery-section-head {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.lottery-section-head h3 {
+  margin: 0;
+  color: var(--blue-deep);
+}
+
+.lottery-prize-list,
+.lottery-result-list,
+.lottery-config-list {
+  display: grid;
+  gap: 12px;
+}
+
+.lottery-prize-item,
+.lottery-config-card,
+.lottery-result-item {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(82, 139, 223, 0.12);
+  background: rgba(248, 252, 255, 0.92);
+}
+
+.lottery-prize-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+}
+
+.lottery-prize-item.is-disabled,
+.lottery-config-card.is-disabled {
+  opacity: 0.72;
+  background: rgba(241, 245, 250, 0.94);
+}
+
+.lottery-prize-item.is-highlight {
+  border-color: rgba(240, 127, 76, 0.42);
+  box-shadow: 0 16px 28px rgba(240, 127, 76, 0.16);
+  transform: translateY(-2px);
+}
+
+.lottery-prize-swatch {
+  width: 18px;
+  height: 58px;
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--lottery-prize-color) 70%, white),
+    var(--lottery-prize-color)
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.lottery-prize-copy strong,
+.lottery-result-item strong {
+  display: block;
+}
+
+.lottery-prize-copy small,
+.lottery-result-item small,
+.lottery-config-title small {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.lottery-prize-meta {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.lottery-result-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.lottery-result-item strong {
+  color: var(--blue-deep);
+}
+
+.lottery-config-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.lottery-config-metric {
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(82, 139, 223, 0.12);
+  background:
+    radial-gradient(circle at right top, rgba(255, 255, 255, 0.94), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(237, 247, 255, 0.92));
+}
+
+.lottery-config-metric span {
+  display: block;
+  color: var(--text-muted);
+}
+
+.lottery-config-metric strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 26px;
+  color: var(--blue-deep);
+}
+
+.lottery-config-card {
+  display: grid;
+  gap: 12px;
+}
+
+.lottery-config-head {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.lottery-config-title {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.lottery-config-title > div {
+  min-width: 0;
+}
+
+@keyframes lottery-center-pulse {
+  from {
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  to {
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+}
+
 .pet-locked-card,
 .pet-hatch-card {
   grid-template-columns: minmax(0, 1fr) auto;
@@ -3493,6 +3933,25 @@ textarea {
   .score-template-pills {
     grid-template-columns: 1fr;
   }
+
+  .lottery-wheel-shell,
+  .lottery-modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lottery-config-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lottery-prize-item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .lottery-prize-meta {
+    grid-column: 1 / -1;
+    justify-items: start;
+    text-align: left;
+  }
 }
 
 @media (max-width: 760px) {
@@ -3512,5 +3971,33 @@ textarea {
 
   .score-cockpit {
     padding: 18px;
+  }
+
+  .lottery-student-summary,
+  .lottery-config-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .lottery-score-pill {
+    min-height: 72px;
+  }
+
+  .lottery-wheel-track {
+    --lottery-wheel-size: 280px;
+  }
+
+  .lottery-wheel-label {
+    width: 84px;
+    font-size: 11px;
+  }
+
+  .lottery-action-row > .mini-action {
+    flex: 1 1 140px;
+  }
+
+  .lottery-config-head,
+  .lottery-result-item {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

@@ -34,6 +34,73 @@ const STUDENT_NO_HEADER_PATTERN = /^(student(?:\s*(?:id|no|number))?|studentid|s
 const SEAT_NO_HEADER_PATTERN = /^(seat(?:\s*(?:id|no|number))?|seatno|desk|座号|座位|座次)$/i;
 const NOTE_HEADER_PATTERN = /^(note|remark|comment|memo|备注|说明)$/i;
 const STUDENT_IMPORT_FIELD_KEYS = ['name', 'groupName', 'studentNo', 'seatNo', 'note'];
+const LOTTERY_DRAW_COST = 5;
+const LOTTERY_RECENT_RESULT_LIMIT = 12;
+const LOTTERY_DEFAULT_PRIZES = [
+  {
+    id: 'lottery-sticker-pack',
+    name: '贴纸小礼包',
+    probability: 24,
+    color: '#5aa9ff',
+    icon: '🎁',
+    description: '课堂结束后可领取一份贴纸或文具小奖励。',
+    enabled: true
+  },
+  {
+    id: 'lottery-praise-card',
+    name: '课堂表扬卡',
+    probability: 20,
+    color: '#47c79a',
+    icon: '🌟',
+    description: '获得一次课堂公开表扬或荣誉展示机会。',
+    enabled: true
+  },
+  {
+    id: 'lottery-seat-first',
+    name: '优先选择权',
+    probability: 16,
+    color: '#ffb24d',
+    icon: '🪑',
+    description: '下次相关课堂活动可获得一次优先选择机会。',
+    enabled: true
+  },
+  {
+    id: 'lottery-pet-snack',
+    name: '宠物零食券',
+    probability: 14,
+    color: '#ff8fa1',
+    icon: '🍪',
+    description: '可作为宠物家园奖励，由老师自由兑现。',
+    enabled: true
+  },
+  {
+    id: 'lottery-team-star',
+    name: '小组荣誉星',
+    probability: 12,
+    color: '#9186ff',
+    icon: '🏅',
+    description: '可以给自己所在小组增加一次荣誉展示。',
+    enabled: true
+  },
+  {
+    id: 'lottery-mystery',
+    name: '神秘惊喜',
+    probability: 8,
+    color: '#3fc9d5',
+    icon: '🎉',
+    description: '现场揭晓的神秘奖励，适合老师灵活发挥。',
+    enabled: true
+  },
+  {
+    id: 'lottery-thanks',
+    name: '谢谢参与',
+    probability: 6,
+    color: '#f48b57',
+    icon: '🍀',
+    description: '本次没有实物奖励，继续攒积分冲击下一次好运。',
+    enabled: true
+  }
+];
 
 let mainWindow;
 let widgetWindow;
@@ -61,12 +128,107 @@ function cloneTemplates(templates) {
   }));
 }
 
+function cloneLotteryPrizes(prizes) {
+  return (Array.isArray(prizes) ? prizes : []).map((prize) => ({
+    id: prize.id,
+    name: prize.name,
+    probability: prize.probability,
+    color: prize.color,
+    icon: prize.icon,
+    description: prize.description,
+    enabled: prize.enabled !== false
+  }));
+}
+
+function roundLotteryProbability(value, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.round(numeric * 100) / 100);
+}
+
+function normalizeLotteryColor(value, fallback = '#5aa9ff') {
+  const normalized = String(value ?? '').trim();
+  if (/^#([\da-fA-F]{3}|[\da-fA-F]{6})$/.test(normalized)) {
+    if (normalized.length === 4) {
+      return `#${normalized.slice(1).split('').map((char) => `${char}${char}`).join('')}`.toLowerCase();
+    }
+    return normalized.toLowerCase();
+  }
+
+  return fallback;
+}
+
+function normalizeLotteryPrizes(prizes, fallback = LOTTERY_DEFAULT_PRIZES) {
+  const source = Array.isArray(prizes) && prizes.length > 0 ? prizes : fallback;
+  const seen = new Set();
+  const normalized = source
+    .filter((prize) => prize && typeof prize.name === 'string' && prize.name.trim())
+    .map((prize, index) => {
+      const fallbackPrize = fallback[index % fallback.length] || LOTTERY_DEFAULT_PRIZES[0];
+      const id = typeof prize.id === 'string' && prize.id.trim() && !seen.has(prize.id)
+        ? prize.id
+        : createId('lottery-prize');
+      seen.add(id);
+
+      return {
+        id,
+        name: prize.name.trim().slice(0, 24),
+        probability: roundLotteryProbability(prize.probability, fallbackPrize.probability),
+        color: normalizeLotteryColor(prize.color, fallbackPrize.color),
+        icon: typeof prize.icon === 'string' && prize.icon.trim()
+          ? prize.icon.trim().slice(0, 4)
+          : fallbackPrize.icon,
+        description: typeof prize.description === 'string'
+          ? prize.description.trim().slice(0, 60)
+          : '',
+        enabled: prize.enabled !== false
+      };
+    });
+
+  return normalized.length > 0 ? normalized : cloneLotteryPrizes(LOTTERY_DEFAULT_PRIZES);
+}
+
+function normalizeLotteryRecentResults(results) {
+  return (Array.isArray(results) ? results : [])
+    .filter((entry) => entry && typeof entry.prizeName === 'string' && entry.prizeName.trim())
+    .map((entry) => ({
+      id: typeof entry.id === 'string' ? entry.id : createId('lottery-result'),
+      studentId: typeof entry.studentId === 'string' ? entry.studentId : '',
+      studentName: typeof entry.studentName === 'string' ? entry.studentName.trim().slice(0, 24) : '',
+      prizeId: typeof entry.prizeId === 'string' ? entry.prizeId : '',
+      prizeName: entry.prizeName.trim().slice(0, 24),
+      prizeIcon: typeof entry.prizeIcon === 'string' ? entry.prizeIcon.trim().slice(0, 4) : '',
+      timestamp: Number.isFinite(Number(entry.timestamp)) ? Number(entry.timestamp) : Date.now()
+    }))
+    .slice(0, LOTTERY_RECENT_RESULT_LIMIT);
+}
+
+function createDefaultLotteryConfig() {
+  return {
+    cost: LOTTERY_DRAW_COST,
+    prizes: cloneLotteryPrizes(LOTTERY_DEFAULT_PRIZES),
+    recentResults: []
+  };
+}
+
+function normalizeLotteryConfig(candidate) {
+  return {
+    cost: Math.max(1, Math.floor(Number(candidate?.cost) || LOTTERY_DRAW_COST)),
+    prizes: normalizeLotteryPrizes(candidate?.prizes, LOTTERY_DEFAULT_PRIZES),
+    recentResults: normalizeLotteryRecentResults(candidate?.recentResults)
+  };
+}
+
 function createDefaultBoard(name = '新面板 1') {
   return {
     id: createId('board'),
     name,
     students: [],
     groups: [],
+    lotteryConfig: createDefaultLotteryConfig(),
     scoreTemplates: {
       plus: cloneTemplates(DEFAULT_PLUS_TEMPLATES),
       minus: cloneTemplates(DEFAULT_MINUS_TEMPLATES)
@@ -307,6 +469,7 @@ function normalizeBoard(candidate, index) {
     name: typeof candidate?.name === 'string' && candidate.name.trim() ? candidate.name.trim() : `新面板 ${index + 1}`,
     students: normalizeStudents(candidate?.students, validGroupIds),
     groups,
+    lotteryConfig: normalizeLotteryConfig(candidate?.lotteryConfig),
     scoreTemplates: {
       plus: normalizeTemplateList(candidate?.scoreTemplates?.plus, DEFAULT_PLUS_TEMPLATES),
       minus: normalizeTemplateList(candidate?.scoreTemplates?.minus, DEFAULT_MINUS_TEMPLATES)

@@ -42,6 +42,9 @@ const PET_EGG_ACCELERATION_HOUR_MS = 60 * 60 * 1000;
 const SHOP_ITEM_EFFECT_TYPES = ['pet-egg', 'snack', 'revive', 'collectible'];
 const PET_BATTLE_AUTO_DELAY_MS = 920;
 const PET_BATTLE_ANIMATION_MS = 760;
+const LOTTERY_DRAW_COST = 5;
+const LOTTERY_SPIN_DURATION_MS = 4600;
+const LOTTERY_RECENT_RESULT_LIMIT = 12;
 const DEFAULT_SHOP_ITEMS = [
   {
     id: 'shop-pet-egg',
@@ -101,6 +104,71 @@ const DEFAULT_SHOP_ITEMS = [
     effectType: 'collectible',
     growthGain: 0,
     description: '宠物背包收藏道具，可用于后续装扮系统。',
+    enabled: true
+  }
+];
+const LOTTERY_DEFAULT_PRIZES = [
+  {
+    id: 'lottery-sticker-pack',
+    name: '贴纸小礼包',
+    probability: 24,
+    color: '#5aa9ff',
+    icon: '🎁',
+    description: '课堂结束后可领取一份贴纸或文具小奖励。',
+    enabled: true
+  },
+  {
+    id: 'lottery-praise-card',
+    name: '课堂表扬卡',
+    probability: 20,
+    color: '#47c79a',
+    icon: '🌟',
+    description: '获得一次课堂公开表扬或荣誉展示机会。',
+    enabled: true
+  },
+  {
+    id: 'lottery-seat-first',
+    name: '优先选择权',
+    probability: 16,
+    color: '#ffb24d',
+    icon: '🪑',
+    description: '下次相关课堂活动可获得一次优先选择机会。',
+    enabled: true
+  },
+  {
+    id: 'lottery-pet-snack',
+    name: '宠物零食券',
+    probability: 14,
+    color: '#ff8fa1',
+    icon: '🍪',
+    description: '可作为宠物家园奖励，由老师自由兑现。',
+    enabled: true
+  },
+  {
+    id: 'lottery-team-star',
+    name: '小组荣誉星',
+    probability: 12,
+    color: '#9186ff',
+    icon: '🏅',
+    description: '可以给自己所在小组增加一次荣誉展示。',
+    enabled: true
+  },
+  {
+    id: 'lottery-mystery',
+    name: '神秘惊喜',
+    probability: 8,
+    color: '#3fc9d5',
+    icon: '🎉',
+    description: '现场揭晓的神秘奖励，适合老师灵活发挥。',
+    enabled: true
+  },
+  {
+    id: 'lottery-thanks',
+    name: '谢谢参与',
+    probability: 6,
+    color: '#f48b57',
+    icon: '🍀',
+    description: '本次没有实物奖励，继续攒积分冲击下一次好运。',
     enabled: true
   }
 ];
@@ -474,6 +542,100 @@ function cloneShopItems(items) {
   }));
 }
 
+function cloneLotteryPrizes(prizes) {
+  return (Array.isArray(prizes) ? prizes : []).map((prize) => ({
+    id: prize.id,
+    name: prize.name,
+    probability: prize.probability,
+    color: prize.color,
+    icon: prize.icon,
+    description: prize.description,
+    enabled: prize.enabled !== false
+  }));
+}
+
+function roundLotteryProbability(value, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.round(numeric * 100) / 100);
+}
+
+function normalizeLotteryColor(value, fallback = '#5aa9ff') {
+  const normalized = String(value ?? '').trim();
+  if (/^#([\da-fA-F]{3}|[\da-fA-F]{6})$/.test(normalized)) {
+    if (normalized.length === 4) {
+      return `#${normalized.slice(1).split('').map((char) => `${char}${char}`).join('')}`.toLowerCase();
+    }
+    return normalized.toLowerCase();
+  }
+
+  return fallback;
+}
+
+function normalizeLotteryPrizes(prizes, fallback = LOTTERY_DEFAULT_PRIZES) {
+  const source = Array.isArray(prizes) && prizes.length > 0 ? prizes : fallback;
+  const seen = new Set();
+  const normalized = source
+    .filter((prize) => prize && typeof prize.name === 'string' && prize.name.trim())
+    .map((prize, index) => {
+      const fallbackPrize = fallback[index % fallback.length] || LOTTERY_DEFAULT_PRIZES[0];
+      const id = typeof prize.id === 'string' && prize.id.trim() && !seen.has(prize.id)
+        ? prize.id
+        : createId('lottery-prize');
+      seen.add(id);
+
+      return {
+        id,
+        name: prize.name.trim().slice(0, 24),
+        probability: roundLotteryProbability(prize.probability, fallbackPrize.probability),
+        color: normalizeLotteryColor(prize.color, fallbackPrize.color),
+        icon: typeof prize.icon === 'string' && prize.icon.trim()
+          ? prize.icon.trim().slice(0, 4)
+          : fallbackPrize.icon,
+        description: typeof prize.description === 'string'
+          ? prize.description.trim().slice(0, 60)
+          : '',
+        enabled: prize.enabled !== false
+      };
+    });
+
+  return normalized.length > 0 ? normalized : cloneLotteryPrizes(LOTTERY_DEFAULT_PRIZES);
+}
+
+function normalizeLotteryRecentResults(results) {
+  return (Array.isArray(results) ? results : [])
+    .filter((entry) => entry && typeof entry.prizeName === 'string' && entry.prizeName.trim())
+    .map((entry) => ({
+      id: typeof entry.id === 'string' ? entry.id : createId('lottery-result'),
+      studentId: typeof entry.studentId === 'string' ? entry.studentId : '',
+      studentName: typeof entry.studentName === 'string' ? entry.studentName.trim().slice(0, 24) : '',
+      prizeId: typeof entry.prizeId === 'string' ? entry.prizeId : '',
+      prizeName: entry.prizeName.trim().slice(0, 24),
+      prizeIcon: typeof entry.prizeIcon === 'string' ? entry.prizeIcon.trim().slice(0, 4) : '',
+      timestamp: Number.isFinite(Number(entry.timestamp)) ? Number(entry.timestamp) : Date.now()
+    }))
+    .slice(0, LOTTERY_RECENT_RESULT_LIMIT);
+}
+
+function createDefaultLotteryConfig() {
+  return {
+    cost: LOTTERY_DRAW_COST,
+    prizes: cloneLotteryPrizes(LOTTERY_DEFAULT_PRIZES),
+    recentResults: []
+  };
+}
+
+function normalizeLotteryConfig(candidate) {
+  return {
+    cost: Math.max(1, Math.floor(Number(candidate?.cost) || LOTTERY_DRAW_COST)),
+    prizes: normalizeLotteryPrizes(candidate?.prizes, LOTTERY_DEFAULT_PRIZES),
+    recentResults: normalizeLotteryRecentResults(candidate?.recentResults)
+  };
+}
+
 function createEmptyInventory() {
   return {};
 }
@@ -533,6 +695,7 @@ function createDefaultBoard(name = '新面板 1') {
     students: [],
     groups: [],
     shopItems: cloneShopItems(DEFAULT_SHOP_ITEMS),
+    lotteryConfig: createDefaultLotteryConfig(),
     scoreTemplates: {
       plus: cloneTemplates(DEFAULT_PLUS_TEMPLATES),
       minus: cloneTemplates(DEFAULT_MINUS_TEMPLATES)
@@ -768,6 +931,7 @@ function normalizeBoard(candidate, index) {
     name: typeof candidate?.name === 'string' && candidate.name.trim() ? candidate.name.trim() : `新面板 ${index + 1}`,
     students,
     shopItems: normalizeShopItems(candidate?.shopItems, DEFAULT_SHOP_ITEMS),
+    lotteryConfig: normalizeLotteryConfig(candidate?.lotteryConfig),
     groups: groups.map((group) => {
       const leader = studentMap.get(group.leaderId);
       return {
@@ -1915,6 +2079,7 @@ function cacheElements() {
     petHomeBtn: document.getElementById('petHomeBtn'),
     petShopBtn: document.getElementById('petShopBtn'),
     shopBtn: document.getElementById('shopBtn'),
+    lotteryWheelBtn: document.getElementById('lotteryWheelBtn'),
     manageGroupsBtn: document.getElementById('manageGroupsBtn'),
     groupCountBadge: document.getElementById('groupCountBadge'),
     groupList: document.getElementById('groupList'),
@@ -2148,6 +2313,7 @@ function bindEvents() {
   ui.petHomeBtn.addEventListener('click', openPetHomeModal);
   ui.petShopBtn.addEventListener('click', openPetShopModal);
   ui.shopBtn.addEventListener('click', openShopModal);
+  ui.lotteryWheelBtn.addEventListener('click', openLotteryWheelModal);
   ui.manageGroupsBtn.addEventListener('click', openManageGroupsModal);
 
   ui.groupList.addEventListener('click', handleGroupListClick);
@@ -2783,6 +2949,203 @@ function getOrderedGroupMembers(board, groupId) {
 function getSelectedStudent() {
   const board = getActiveBoard();
   return board?.students.find((student) => student.id === selectedStudentId) || null;
+}
+
+function getLotteryConfig(board = getActiveBoard()) {
+  if (!board) {
+    return createDefaultLotteryConfig();
+  }
+
+  if (!board.lotteryConfig || typeof board.lotteryConfig !== 'object') {
+    board.lotteryConfig = createDefaultLotteryConfig();
+    return board.lotteryConfig;
+  }
+
+  if (
+    !Array.isArray(board.lotteryConfig.prizes)
+    || !Array.isArray(board.lotteryConfig.recentResults)
+    || !Number.isFinite(Number(board.lotteryConfig.cost))
+  ) {
+    board.lotteryConfig = normalizeLotteryConfig(board.lotteryConfig);
+  }
+
+  return board.lotteryConfig;
+}
+
+function getEnabledLotteryPrizes(board = getActiveBoard()) {
+  return getLotteryConfig(board).prizes.filter((prize) =>
+    prize.enabled !== false && roundLotteryProbability(prize.probability) > 0
+  );
+}
+
+function getLotteryPrizeWeightTotal(prizes) {
+  return roundLotteryProbability(
+    (Array.isArray(prizes) ? prizes : []).reduce(
+      (total, prize) => total + Math.max(0, roundLotteryProbability(prize?.probability)),
+      0
+    )
+  );
+}
+
+function formatLotteryWeight(value) {
+  const numeric = roundLotteryProbability(value);
+  if (Number.isInteger(numeric)) {
+    return String(numeric);
+  }
+
+  return numeric.toFixed(numeric >= 10 ? 1 : 2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+}
+
+function getLotteryPrizeChanceLabel(prize, totalWeight) {
+  const weight = Math.max(0, roundLotteryProbability(prize?.probability));
+  if (totalWeight <= 0 || prize?.enabled === false || weight <= 0) {
+    return '0%';
+  }
+
+  const percent = (weight / totalWeight) * 100;
+  return `${percent.toFixed(percent >= 10 ? 1 : 2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1')}%`;
+}
+
+function buildLotteryWheelPresentation(prizes) {
+  const available = (Array.isArray(prizes) ? prizes : []).filter((prize) =>
+    prize && prize.enabled !== false && roundLotteryProbability(prize.probability) > 0
+  );
+  const totalWeight = getLotteryPrizeWeightTotal(available);
+
+  if (available.length === 0 || totalWeight <= 0) {
+    return {
+      totalWeight: 0,
+      slices: [],
+      gradient: 'from -90deg, #eef6ff 0deg 360deg'
+    };
+  }
+
+  let currentAngle = 0;
+  const slices = available.map((prize, index) => {
+    const weight = roundLotteryProbability(prize.probability);
+    const startAngle = currentAngle;
+    const endAngle = index === available.length - 1
+      ? 360
+      : Math.min(360, currentAngle + ((weight / totalWeight) * 360));
+    currentAngle = endAngle;
+
+    return {
+      ...prize,
+      weight,
+      startAngle,
+      endAngle,
+      midAngle: startAngle + ((endAngle - startAngle) / 2),
+      sweep: endAngle - startAngle
+    };
+  });
+
+  return {
+    totalWeight,
+    slices,
+    gradient: `from -90deg, ${slices.map((slice) =>
+      `${slice.color} ${slice.startAngle.toFixed(3)}deg ${slice.endAngle.toFixed(3)}deg`
+    ).join(', ')}`
+  };
+}
+
+function pickLotteryPrize(prizes) {
+  const available = (Array.isArray(prizes) ? prizes : []).filter((prize) =>
+    prize && prize.enabled !== false && roundLotteryProbability(prize.probability) > 0
+  );
+  const totalWeight = getLotteryPrizeWeightTotal(available);
+  if (available.length === 0 || totalWeight <= 0) {
+    return null;
+  }
+
+  let ticket = Math.random() * totalWeight;
+  for (const prize of available) {
+    const weight = roundLotteryProbability(prize.probability);
+    if (ticket < weight) {
+      return prize;
+    }
+    ticket -= weight;
+  }
+
+  return available[available.length - 1] || null;
+}
+
+function calculateLotteryTargetRotation(slices, prizeId, currentRotation = 0) {
+  const slice = (Array.isArray(slices) ? slices : []).find((item) => item.id === prizeId);
+  if (!slice) {
+    return currentRotation + 1800;
+  }
+
+  const offsetRange = Math.min(Math.max(slice.sweep * 0.36, 6), 18);
+  const offset = (Math.random() * offsetRange) - (offsetRange / 2);
+  const desiredRotation = (360 - (slice.midAngle + offset) + 360) % 360;
+  const normalizedCurrent = ((currentRotation % 360) + 360) % 360;
+  let delta = desiredRotation - normalizedCurrent;
+  if (delta < 0) {
+    delta += 360;
+  }
+
+  return currentRotation + ((5 + Math.floor(Math.random() * 2)) * 360) + delta;
+}
+
+function appendLotteryRecentResult(board, student, prize) {
+  const config = getLotteryConfig(board);
+  const result = {
+    id: createId('lottery-result'),
+    studentId: student?.id || '',
+    studentName: student?.name || '',
+    prizeId: prize?.id || '',
+    prizeName: prize?.name || '未命名奖品',
+    prizeIcon: prize?.icon || '🎁',
+    timestamp: Date.now()
+  };
+
+  config.recentResults.unshift(result);
+  config.recentResults = config.recentResults.slice(0, LOTTERY_RECENT_RESULT_LIMIT);
+  return result;
+}
+
+function renderLotteryPrizeList(board, highlightPrizeId = '') {
+  const config = getLotteryConfig(board);
+  const totalWeight = getLotteryPrizeWeightTotal(getEnabledLotteryPrizes(board));
+
+  if (config.prizes.length === 0) {
+    return '<div class="empty-state">当前还没有奖品，请先配置奖品。</div>';
+  }
+
+  return config.prizes.map((prize) => {
+    const enabledForDraw = prize.enabled !== false && roundLotteryProbability(prize.probability) > 0;
+    return `
+      <article class="lottery-prize-item ${enabledForDraw ? '' : 'is-disabled'} ${highlightPrizeId === prize.id ? 'is-highlight' : ''}" data-prize-id="${prize.id}">
+        <span class="lottery-prize-swatch" style="--lottery-prize-color: ${escapeHtml(prize.color)};"></span>
+        <div class="lottery-prize-copy">
+          <strong>${escapeHtml(prize.icon || '🎁')} ${escapeHtml(prize.name)}</strong>
+          <small>${escapeHtml(prize.description || '暂无说明')}</small>
+        </div>
+        <div class="lottery-prize-meta">
+          <span>${enabledForDraw ? '参与抽奖' : '未参与抽奖'}</span>
+          <span>权重 ${formatLotteryWeight(prize.probability)} · 概率 ${getLotteryPrizeChanceLabel(prize, totalWeight)}</span>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+function renderLotteryRecentResultList(board) {
+  const results = getLotteryConfig(board).recentResults.slice(0, 6);
+  if (results.length === 0) {
+    return '<div class="empty-state">还没有抽奖记录，开始第一次抽奖吧。</div>';
+  }
+
+  return `
+    <div class="lottery-result-list">
+      ${results.map((result) => `
+        <article class="lottery-result-item">
+          <strong>${escapeHtml(result.prizeIcon || '🎁')} ${escapeHtml(result.prizeName)}</strong>
+          <small>${escapeHtml(result.studentName || '未命名学生')} · ${formatTimestamp(result.timestamp)}</small>
+        </article>
+      `).join('')}
+    </div>
+  `;
 }
 
 function getStudentInventoryCount(student, itemId) {
@@ -4860,6 +5223,11 @@ function openCreateBoardModal() {
           plus: cloneTemplates(currentBoard.scoreTemplates.plus),
           minus: cloneTemplates(currentBoard.scoreTemplates.minus)
         };
+        board.lotteryConfig = {
+          cost: getLotteryConfig(currentBoard).cost,
+          prizes: cloneLotteryPrizes(getLotteryConfig(currentBoard).prizes),
+          recentResults: []
+        };
       }
 
       appState.boards.push(board);
@@ -5205,6 +5573,552 @@ function openShopEditorModal() {
 
       body.addEventListener('click', handleClick);
       return () => {
+        body.removeEventListener('click', handleClick);
+      };
+    }
+  });
+}
+
+function reopenLotteryEditorLater() {
+  window.setTimeout(() => {
+    if (getActiveBoard()) {
+      openLotteryEditorModal();
+    }
+  }, 0);
+}
+
+function renderLotteryWheelModal(board, student) {
+  const config = getLotteryConfig(board);
+  const enabledPrizes = getEnabledLotteryPrizes(board);
+  const presentation = buildLotteryWheelPresentation(enabledPrizes);
+  const canDraw = Boolean(student) && student.score >= config.cost && presentation.slices.length > 0;
+  const statusText = !student
+    ? '请先在主界面选中一名学生。'
+    : student.score < config.cost
+      ? `当前积分不足 ${config.cost} 分，暂时不能抽奖。`
+      : presentation.slices.length === 0
+        ? '请先配置至少 1 个启用且权重大于 0 的奖品。'
+        : '准备就绪，点击开始抽奖。';
+
+  return `
+    <section class="lottery-student-summary">
+      <div>
+        <p class="card-kicker">积分抽奖大转盘</p>
+        <h3 data-lottery-student-name>${student ? escapeHtml(student.name) : '未选择学生'}</h3>
+        <p class="modal-help">${student ? `每次抽奖固定消耗 ${config.cost} 积分，结果会记录到历史中。` : '先选择学生，再回来开始积分抽奖。'}</p>
+      </div>
+      <div class="lottery-score-pill ${scoreTone(student?.score || 0)}" data-lottery-student-score>${formatSignedScore(student?.score || 0)}</div>
+    </section>
+    <section class="lottery-wheel-shell">
+      <div class="lottery-wheel-stage">
+        <div class="lottery-wheel-pointer" aria-hidden="true"></div>
+        <div class="lottery-wheel-track" data-lottery-wheel-track style="--lottery-wheel-gradient: ${escapeHtml(presentation.gradient)};">
+          ${presentation.slices.length > 0
+            ? presentation.slices.map((slice) => `
+              <span class="lottery-wheel-label" style="--lottery-angle: ${slice.midAngle.toFixed(3)}deg; --lottery-angle-inverse: -${slice.midAngle.toFixed(3)}deg;">
+                <em>${escapeHtml(slice.icon || '🎁')}</em>
+                <span>${escapeHtml(slice.name)}</span>
+              </span>
+            `).join('')
+            : '<div class="lottery-wheel-empty">请先配置奖品</div>'}
+          <div class="lottery-wheel-center">
+            <strong>${config.cost}</strong>
+            <span>积分 / 次</span>
+          </div>
+        </div>
+      </div>
+      <div class="lottery-wheel-panel">
+        <div class="preview-tag-row">
+          <span class="preview-tag">启用奖品 ${enabledPrizes.length} 个</span>
+          <span class="preview-tag">总权重 ${formatLotteryWeight(presentation.totalWeight)}</span>
+        </div>
+        <p class="lottery-status" data-lottery-status>${escapeHtml(statusText)}</p>
+        <div class="lottery-action-row">
+          <button class="mini-action mini-action-green" type="button" data-action="spin-lottery" ${canDraw ? '' : 'disabled'}>开始抽奖</button>
+          <button class="mini-action" type="button" data-action="edit-lottery">配置奖品</button>
+        </div>
+        <article class="lottery-result-card" data-lottery-result-card hidden>
+          <span class="lottery-result-kicker" data-lottery-result-title>本次结果</span>
+          <strong data-lottery-result-prize>等待抽奖</strong>
+          <p class="lottery-result-note" data-lottery-result-meta>点击开始抽奖后，结果会在这里展示。</p>
+          <small data-lottery-result-time></small>
+        </article>
+      </div>
+    </section>
+    <div class="lottery-modal-grid">
+      <section class="lottery-section-panel">
+        <div class="lottery-section-head">
+          <div>
+            <h3>奖品与概率</h3>
+            <p class="modal-help">权重越大，被抽中的概率越高，不要求总和等于 100。</p>
+          </div>
+        </div>
+        <div class="lottery-prize-list" data-lottery-prize-list>${renderLotteryPrizeList(board)}</div>
+      </section>
+      <section class="lottery-section-panel">
+        <div class="lottery-section-head">
+          <div>
+            <h3>最近抽奖记录</h3>
+            <p class="modal-help">保留最近几次抽中的奖品，方便课堂现场回看。</p>
+          </div>
+        </div>
+        <div data-lottery-recent-list>${renderLotteryRecentResultList(board)}</div>
+      </section>
+    </div>
+  `;
+}
+
+function renderLotteryEditorModal(board) {
+  const config = getLotteryConfig(board);
+  const enabledPrizes = getEnabledLotteryPrizes(board);
+  const totalWeight = getLotteryPrizeWeightTotal(enabledPrizes);
+
+  return `
+    <div class="pet-modal-toolbar">
+      <button class="mini-action mini-action-green" type="button" data-action="create-lottery-prize">新增奖品</button>
+      <button class="mini-action" type="button" data-action="reset-lottery-prizes">恢复默认奖池</button>
+      <button class="mini-action" type="button" data-action="open-lottery-wheel">返回大转盘</button>
+    </div>
+    <section class="lottery-config-summary">
+      <div class="lottery-config-metric">
+        <span>抽奖消耗</span>
+        <strong>${config.cost} 积分 / 次</strong>
+      </div>
+      <div class="lottery-config-metric">
+        <span>启用奖品</span>
+        <strong>${enabledPrizes.length} 个</strong>
+      </div>
+      <div class="lottery-config-metric">
+        <span>总权重</span>
+        <strong>${formatLotteryWeight(totalWeight)}</strong>
+      </div>
+    </section>
+    <div class="lottery-config-list">
+      ${config.prizes.length > 0 ? config.prizes.map((prize) => {
+        const enabledForDraw = prize.enabled !== false && roundLotteryProbability(prize.probability) > 0;
+        return `
+          <article class="lottery-config-card ${enabledForDraw ? '' : 'is-disabled'}">
+            <div class="lottery-config-head">
+              <div class="lottery-config-title">
+                <span class="lottery-prize-swatch" style="--lottery-prize-color: ${escapeHtml(prize.color)};"></span>
+                <div>
+                  <strong>${escapeHtml(prize.icon || '🎁')} ${escapeHtml(prize.name)}</strong>
+                  <small>${escapeHtml(prize.description || '暂无说明')}</small>
+                </div>
+              </div>
+              <div class="manage-member-actions">
+                <button class="mini-action" type="button" data-action="edit-lottery-prize" data-prize-id="${prize.id}">编辑</button>
+                <button class="mini-action mini-action-red" type="button" data-action="delete-lottery-prize" data-prize-id="${prize.id}">删除</button>
+              </div>
+            </div>
+            <div class="preview-tag-row">
+              <span class="preview-tag">${enabledForDraw ? '参与抽奖' : '未参与抽奖'}</span>
+              <span class="preview-tag">权重 ${formatLotteryWeight(prize.probability)}</span>
+              <span class="preview-tag">概率 ${getLotteryPrizeChanceLabel(prize, totalWeight)}</span>
+            </div>
+          </article>
+        `;
+      }).join('') : '<div class="empty-state">当前还没有奖品，请先新增一个奖品。</div>'}
+    </div>
+  `;
+}
+
+function openLotteryPrizeEditorModal(prizeId = '') {
+  const board = getActiveBoard();
+  const config = getLotteryConfig(board);
+  const prize = config.prizes.find((item) => item.id === prizeId) || null;
+  if (!board) {
+    return;
+  }
+
+  openModal({
+    title: prize ? '编辑抽奖奖品' : '新增抽奖奖品',
+    submitText: prize ? '保存奖品' : '创建奖品',
+    html: `
+      <div class="modal-grid">
+        <label class="hero-field">
+          <span>奖品名称</span>
+          <input name="prizeName" type="text" maxlength="24" autocomplete="off" value="${escapeHtml(prize?.name || '')}" />
+        </label>
+        <label class="hero-field">
+          <span>图标</span>
+          <input name="prizeIcon" type="text" maxlength="4" autocomplete="off" value="${escapeHtml(prize?.icon || '')}" placeholder="🎁" />
+        </label>
+        <label class="hero-field">
+          <span>权重</span>
+          <input name="prizeProbability" type="number" min="0" max="9999" step="0.1" value="${prize ? formatLotteryWeight(prize.probability) : '10'}" />
+        </label>
+        <label class="hero-field">
+          <span>颜色</span>
+          <input name="prizeColor" type="color" value="${escapeHtml(prize?.color || '#5aa9ff')}" />
+        </label>
+        <label class="inline-check">
+          <input name="prizeEnabled" type="checkbox" ${prize?.enabled === false ? '' : 'checked'} />
+          <span>参与抽奖</span>
+        </label>
+      </div>
+      <label class="hero-field">
+        <span>奖品说明</span>
+        <textarea name="prizeDescription" rows="4">${escapeTextarea(prize?.description || '')}</textarea>
+      </label>
+      <p class="modal-help">说明：权重越大，抽中的概率越高；若勾选“参与抽奖”，权重必须大于 0。</p>
+    `,
+    onSubmit: (formData) => {
+      const prizeName = formData.get('prizeName')?.toString().trim() || '';
+      const icon = formData.get('prizeIcon')?.toString().trim() || '🎁';
+      const probability = roundLotteryProbability(formData.get('prizeProbability'));
+      const color = normalizeLotteryColor(formData.get('prizeColor'), prize?.color || '#5aa9ff');
+      const description = formData.get('prizeDescription')?.toString().trim() || '';
+      const enabled = formData.get('prizeEnabled') === 'on';
+
+      if (!prizeName) {
+        showToast('请输入奖品名称。');
+        return false;
+      }
+
+      if (enabled && probability <= 0) {
+        showToast('参与抽奖的奖品权重必须大于 0。');
+        return false;
+      }
+
+      const draft = {
+        id: prize?.id || createId('lottery-prize'),
+        name: prizeName.slice(0, 24),
+        probability,
+        color,
+        icon: icon.slice(0, 4),
+        description: description.slice(0, 60),
+        enabled
+      };
+
+      if (prize) {
+        Object.assign(prize, draft);
+      } else {
+        config.prizes.push(draft);
+      }
+
+      commitState(`${draft.name} 的抽奖配置已保存。`);
+      reopenLotteryEditorLater();
+    }
+  });
+}
+
+function openDeleteLotteryPrizePreview(prizeId) {
+  const board = getActiveBoard();
+  const config = getLotteryConfig(board);
+  const prize = config.prizes.find((item) => item.id === prizeId);
+  if (!board || !prize) {
+    showToast('目标奖品不存在。');
+    return;
+  }
+
+  openActionPreviewModal({
+    title: '确认删除抽奖奖品',
+    submitText: '删除奖品',
+    tags: [
+      prize.name,
+      `权重 ${formatLotteryWeight(prize.probability)}`,
+      prize.enabled !== false ? '参与抽奖' : '未参与抽奖'
+    ],
+    warningText: '删除后，这个奖品会从当前面板的大转盘中移除。',
+    onConfirm: async () => {
+      config.prizes = config.prizes.filter((item) => item.id !== prize.id);
+      commitState(`已删除抽奖奖品 ${prize.name}。`);
+      reopenLotteryEditorLater();
+    }
+  });
+}
+
+function resetLotteryPrizes() {
+  const board = getActiveBoard();
+  if (!board) {
+    return;
+  }
+
+  openActionPreviewModal({
+    title: '恢复默认抽奖奖池',
+    submitText: '恢复默认奖池',
+    warningText: '当前面板的大转盘奖品会恢复为默认配置，已有抽奖记录会继续保留。',
+    onConfirm: async () => {
+      const currentConfig = getLotteryConfig(board);
+      board.lotteryConfig = {
+        cost: LOTTERY_DRAW_COST,
+        prizes: cloneLotteryPrizes(LOTTERY_DEFAULT_PRIZES),
+        recentResults: currentConfig.recentResults
+      };
+      commitState('积分抽奖奖池已恢复为默认配置。');
+      reopenLotteryEditorLater();
+    }
+  });
+}
+
+function openLotteryEditorModal() {
+  const board = getActiveBoard();
+  if (!board) {
+    return;
+  }
+
+  openModal({
+    title: '编辑大转盘奖池',
+    hideSubmit: true,
+    cancelText: '关闭',
+    html: renderLotteryEditorModal(board),
+    onOpen: (body) => {
+      const handleClick = (event) => {
+        const actionNode = event.target.closest('[data-action]');
+        const action = actionNode?.dataset.action;
+        const prizeId = actionNode?.dataset.prizeId || '';
+        if (!action) {
+          return;
+        }
+
+        if (action === 'create-lottery-prize') {
+          openLotteryPrizeEditorModal();
+          return;
+        }
+
+        if (action === 'edit-lottery-prize') {
+          openLotteryPrizeEditorModal(prizeId);
+          return;
+        }
+
+        if (action === 'delete-lottery-prize') {
+          openDeleteLotteryPrizePreview(prizeId);
+          return;
+        }
+
+        if (action === 'reset-lottery-prizes') {
+          resetLotteryPrizes();
+          return;
+        }
+
+        if (action === 'open-lottery-wheel') {
+          openLotteryWheelModal();
+        }
+      };
+
+      body.addEventListener('click', handleClick);
+      return () => {
+        body.removeEventListener('click', handleClick);
+      };
+    }
+  });
+}
+
+function openLotteryWheelModal() {
+  const board = getActiveBoard();
+  if (!board) {
+    return;
+  }
+
+  const modalState = {
+    spinning: false,
+    currentRotation: 0,
+    result: null,
+    spinTimer: 0
+  };
+
+  openModal({
+    title: '积分抽奖大转盘',
+    hideSubmit: true,
+    cancelText: '关闭',
+    html: renderLotteryWheelModal(board, getSelectedStudent()),
+    onOpen: (body) => {
+      const wheelShell = body.querySelector('.lottery-wheel-shell');
+      const wheelTrack = body.querySelector('[data-lottery-wheel-track]');
+      const studentNameNode = body.querySelector('[data-lottery-student-name]');
+      const studentScoreNode = body.querySelector('[data-lottery-student-score]');
+      const statusNode = body.querySelector('[data-lottery-status]');
+      const resultCard = body.querySelector('[data-lottery-result-card]');
+      const resultTitleNode = body.querySelector('[data-lottery-result-title]');
+      const resultPrizeNode = body.querySelector('[data-lottery-result-prize]');
+      const resultMetaNode = body.querySelector('[data-lottery-result-meta]');
+      const resultTimeNode = body.querySelector('[data-lottery-result-time]');
+      const prizeListNode = body.querySelector('[data-lottery-prize-list]');
+      const recentListNode = body.querySelector('[data-lottery-recent-list]');
+      const spinButton = body.querySelector('[data-action="spin-lottery"]');
+      const editButton = body.querySelector('[data-action="edit-lottery"]');
+
+      const resolveRuntimeState = () => {
+        const currentBoard = getActiveBoard();
+        const currentStudent = getSelectedStudent();
+        const currentConfig = getLotteryConfig(currentBoard);
+        const availablePrizes = getEnabledLotteryPrizes(currentBoard);
+        const presentation = buildLotteryWheelPresentation(availablePrizes);
+        return {
+          board: currentBoard,
+          student: currentStudent,
+          config: currentConfig,
+          availablePrizes,
+          presentation
+        };
+      };
+
+      const setStatusText = (text = '') => {
+        const { student, config, presentation } = resolveRuntimeState();
+        const fallbackText = modalState.spinning
+          ? '大转盘正在转动，请稍候揭晓结果。'
+          : modalState.result
+            ? `本次抽中了 ${modalState.result.prizeIcon || '🎁'} ${modalState.result.prizeName}。`
+            : !student
+              ? '请先在主界面选中一名学生。'
+              : student.score < config.cost
+                ? `当前积分不足 ${config.cost} 分，暂时不能抽奖。`
+                : presentation.slices.length === 0
+                  ? '请先配置至少 1 个启用且权重大于 0 的奖品。'
+                  : '准备就绪，点击开始抽奖。';
+
+        if (statusNode) {
+          statusNode.textContent = text || fallbackText;
+        }
+      };
+
+      const updateStudentSummary = () => {
+        const { student } = resolveRuntimeState();
+        if (studentNameNode) {
+          studentNameNode.textContent = student?.name || '未选择学生';
+        }
+        if (studentScoreNode) {
+          studentScoreNode.textContent = formatSignedScore(student?.score || 0);
+          studentScoreNode.className = `lottery-score-pill ${scoreTone(student?.score || 0)}`;
+        }
+      };
+
+      const updateButtons = () => {
+        const { student, config, presentation } = resolveRuntimeState();
+        const canDraw = Boolean(student) && student.score >= config.cost && presentation.slices.length > 0 && !modalState.spinning;
+
+        if (spinButton) {
+          spinButton.disabled = !canDraw;
+        }
+        if (editButton) {
+          editButton.disabled = modalState.spinning;
+        }
+      };
+
+      const updatePrizeHighlight = (prizeId = '') => {
+        prizeListNode?.querySelectorAll('[data-prize-id]').forEach((node) => {
+          node.classList.toggle('is-highlight', node.dataset.prizeId === prizeId);
+        });
+      };
+
+      const updateLists = (prizeId = '') => {
+        const { board: currentBoard } = resolveRuntimeState();
+        if (prizeListNode) {
+          prizeListNode.innerHTML = renderLotteryPrizeList(currentBoard, prizeId);
+        }
+        if (recentListNode) {
+          recentListNode.innerHTML = renderLotteryRecentResultList(currentBoard);
+        }
+      };
+
+      const showResult = (result, title = '本次结果') => {
+        if (!resultCard || !resultTitleNode || !resultPrizeNode || !resultMetaNode || !resultTimeNode) {
+          return;
+        }
+
+        resultCard.hidden = false;
+        resultCard.classList.add('is-visible');
+        resultTitleNode.textContent = title;
+        resultPrizeNode.textContent = `${result.prizeIcon || '🎁'} ${result.prizeName}`;
+        resultMetaNode.textContent = `${result.studentName || '当前学生'} 已扣除 ${getLotteryConfig(getActiveBoard()).cost} 积分。`;
+        resultTimeNode.textContent = formatTimestamp(result.timestamp);
+      };
+
+      const handleSpin = () => {
+        if (modalState.spinning) {
+          return;
+        }
+
+        const runtimeState = resolveRuntimeState();
+        const { board: currentBoard, student, config, availablePrizes, presentation } = runtimeState;
+        if (!student) {
+          showToast('请先选择一名学生。');
+          setStatusText();
+          return;
+        }
+
+        if (student.score < config.cost) {
+          showToast(`积分不足，至少需要 ${config.cost} 分才能抽奖。`);
+          setStatusText();
+          return;
+        }
+
+        if (presentation.slices.length === 0) {
+          showToast('请先配置至少 1 个启用且权重大于 0 的奖品。');
+          setStatusText();
+          return;
+        }
+
+        const prize = pickLotteryPrize(availablePrizes);
+        if (!prize) {
+          showToast('当前没有可抽取的奖品，请检查配置。');
+          setStatusText();
+          return;
+        }
+
+        const targetRotation = calculateLotteryTargetRotation(presentation.slices, prize.id, modalState.currentRotation);
+        modalState.spinning = true;
+        modalState.result = null;
+        wheelShell?.classList.add('is-spinning');
+        updateButtons();
+        setStatusText('大转盘正在转动，请等待结果。');
+        updatePrizeHighlight('');
+
+        changeStudentScore(student, -config.cost, '积分抽奖', `大转盘抽中：${prize.icon || '🎁'} ${prize.name}`);
+        const result = appendLotteryRecentResult(currentBoard, student, prize);
+        commitState(`${student.name} 消耗 ${config.cost} 积分，抽中了 ${prize.icon || '🎁'} ${prize.name}。`);
+        updateStudentSummary();
+        updateLists();
+
+        if (wheelTrack) {
+          wheelTrack.style.transition = 'none';
+          wheelTrack.style.transform = `rotate(${modalState.currentRotation}deg)`;
+          void wheelTrack.offsetWidth;
+          wheelTrack.style.transition = `transform ${LOTTERY_SPIN_DURATION_MS}ms cubic-bezier(0.14, 0.92, 0.14, 1)`;
+          window.requestAnimationFrame(() => {
+            wheelTrack.style.transform = `rotate(${targetRotation}deg)`;
+          });
+        }
+
+        modalState.spinTimer = window.setTimeout(() => {
+          modalState.spinning = false;
+          modalState.currentRotation = targetRotation;
+          modalState.result = result;
+          wheelShell?.classList.remove('is-spinning');
+          updateStudentSummary();
+          updateLists(result.prizeId);
+          updatePrizeHighlight(result.prizeId);
+          showResult(result);
+          updateButtons();
+          setStatusText(`恭喜 ${result.studentName || '该学生'} 抽中 ${result.prizeIcon || '🎁'} ${result.prizeName}。`);
+        }, LOTTERY_SPIN_DURATION_MS + 80);
+      };
+
+      const handleClick = (event) => {
+        const action = event.target.closest('[data-action]')?.dataset.action;
+        if (!action) {
+          return;
+        }
+
+        if (action === 'spin-lottery') {
+          handleSpin();
+          return;
+        }
+
+        if (action === 'edit-lottery') {
+          openLotteryEditorModal();
+        }
+      };
+
+      body.addEventListener('click', handleClick);
+      updateStudentSummary();
+      updateButtons();
+      setStatusText();
+
+      return () => {
+        window.clearTimeout(modalState.spinTimer);
+        wheelShell?.classList.remove('is-spinning');
         body.removeEventListener('click', handleClick);
       };
     }
