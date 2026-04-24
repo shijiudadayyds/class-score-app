@@ -410,6 +410,7 @@
       const progress = getPetProgress(activePet);
       const stats = getPetDerivedStats(activePet);
       const dead = isPetDead(activePet);
+      const learnedSkillCount = Array.isArray(activePet.learnedSkillIds) ? activePet.learnedSkillIds.length : 0;
       const autoReviveLabel = reviveCount > 0
         ? `立即使用复活币（${reviveCount}）`
         : `花费${reviveRule?.cost || 10}积分立即复活`;
@@ -435,6 +436,7 @@
                 <span class="preview-tag">战绩 ${activePet.wins}/${activePet.losses}</span>
                 <span class="preview-tag">羁绊 ${activePet.bond}</span>
                 <span class="preview-tag">喂养 ${activePet.feedCount} 次</span>
+                <span class="preview-tag">技能 ${learnedSkillCount}/${PET_MAX_SKILL_SLOTS}</span>
                 <span class="preview-tag">复活币 ${reviveCount}</span>
                 ${dead ? '<span class="preview-tag pet-dead-badge">已倒下</span>' : ''}
               </div>
@@ -456,8 +458,10 @@
               <div class="pet-stat-grid">
                 <article class="pet-stat-card"><strong>Lv.${progress.level}</strong><span>成长等级</span></article>
                 <article class="pet-stat-card"><strong>${activePet.growth}</strong><span>累计成长值</span></article>
+                <article class="pet-stat-card"><strong>${learnedSkillCount}/${PET_MAX_SKILL_SLOTS}</strong><span>已领悟技能</span></article>
                 <article class="pet-stat-card"><strong>${formatTimestamp(activePet.hatchedAt)}</strong><span>孵化时间</span></article>
                 <article class="pet-stat-card"><strong>${escapeHtml(species.rarity)}</strong><span>稀有度</span></article>
+                <article class="pet-stat-card"><strong>Lv.${PET_MAX_LEVEL}</strong><span>满级上限</span></article>
               </div>
               <div class="pet-progress-shell">
                 <div class="pet-progress-track">
@@ -475,6 +479,7 @@
         </section>
         <section class="modal-panel">
           <h3>技能学习</h3>
+          <p class="modal-help">宠物初始自带 1 个技能，每升 10 级自动增加 1 个技能位，满级为 Lv.${PET_MAX_LEVEL}。</p>
           <div class="pet-skill-grid">${renderPetSkillCards(activePet, student)}</div>
         </section>
         <section class="modal-panel">
