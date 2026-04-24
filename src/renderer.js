@@ -11,6 +11,16 @@ const GROUP_COLOR_PALETTE = [
   '#7a9d28',
   '#d96c1d'
 ];
+const WORKSPACE_PANEL_CONFIGS = [
+  { id: 'groups', anchorId: 'groupList', themeClass: 'workspace-panel-groups' },
+  { id: 'students', anchorId: 'studentList', themeClass: 'workspace-panel-students' },
+  { id: 'scoring', anchorId: 'selectedStudentCard', themeClass: 'workspace-panel-scoring' },
+  { id: 'history', anchorId: 'historyList', themeClass: 'workspace-panel-history' },
+  { id: 'ranking', anchorId: 'groupRankingList', themeClass: 'workspace-panel-ranking' },
+  { id: 'overview', anchorId: 'overviewGrid', themeClass: 'workspace-panel-overview' },
+  { id: 'timers', anchorId: 'stopwatchDisplay', themeClass: 'workspace-panel-timers' },
+  { id: 'showcase', anchorId: 'randomResultCard', themeClass: 'workspace-panel-showcase' }
+];
 const DEFAULT_PLUS_TEMPLATES = [
   { id: 'plus-speaking', name: '积极发言', value: 2 },
   { id: 'plus-homework', name: '作业优秀', value: 3 },
@@ -534,6 +544,21 @@ function createDefaultBoard(name = '新面板 1') {
   };
 }
 
+function createDefaultCollapsedPanels() {
+  return WORKSPACE_PANEL_CONFIGS.reduce((collapsedPanels, config) => {
+    collapsedPanels[config.id] = false;
+    return collapsedPanels;
+  }, {});
+}
+
+function normalizeCollapsedPanels(candidate) {
+  const defaults = createDefaultCollapsedPanels();
+  return Object.keys(defaults).reduce((collapsedPanels, panelId) => {
+    collapsedPanels[panelId] = Boolean(candidate?.[panelId]);
+    return collapsedPanels;
+  }, {});
+}
+
 function createDefaultRootState() {
   const board = createDefaultBoard();
   return {
@@ -542,7 +567,8 @@ function createDefaultRootState() {
     boards: [board],
     appSettings: {
       countdownPresetSeconds: 300,
-      quickActionsCollapsed: false
+      quickActionsCollapsed: false,
+      collapsedPanels: createDefaultCollapsedPanels()
     }
   };
 }
@@ -777,7 +803,8 @@ function normalizeRootState(candidate) {
           1,
           Math.min(24 * 60 * 60, Math.floor(Number(candidate?.appSettings?.countdownPresetSeconds) || 300))
         ),
-        quickActionsCollapsed: Boolean(candidate?.appSettings?.quickActionsCollapsed)
+        quickActionsCollapsed: Boolean(candidate?.appSettings?.quickActionsCollapsed),
+        collapsedPanels: normalizeCollapsedPanels(candidate?.appSettings?.collapsedPanels)
       }
     };
   }
@@ -806,7 +833,8 @@ function normalizeRootState(candidate) {
           1,
           Math.min(24 * 60 * 60, Math.floor(Number(candidate?.settings?.countdownPresetSeconds) || 300))
         ),
-        quickActionsCollapsed: false
+        quickActionsCollapsed: false,
+        collapsedPanels: createDefaultCollapsedPanels()
       }
     };
   }
@@ -1837,6 +1865,7 @@ function openRandomHistoryModal() {
 
 async function init() {
   cacheElements();
+  setupWorkspacePanels();
   bindEvents();
 
   const loadedState = await window.classScore.loadState();
@@ -1947,6 +1976,99 @@ function cacheElements() {
   });
 }
 
+function ensureWorkspacePanelActions(head) {
+  let actions = head.querySelector('.card-head-actions');
+  if (!actions) {
+    actions = document.createElement('div');
+    actions.className = 'card-head-actions workspace-panel-actions';
+    [...head.children].slice(1).forEach((child) => {
+      actions.appendChild(child);
+    });
+    head.appendChild(actions);
+    return actions;
+  }
+
+  actions.classList.add('workspace-panel-actions');
+  return actions;
+}
+
+function setupWorkspacePanels() {
+  if (Array.isArray(ui.workspacePanels) && ui.workspacePanels.length > 0) {
+    return;
+  }
+
+  ui.workspacePanels = WORKSPACE_PANEL_CONFIGS
+    .map((config) => {
+      const anchor = document.getElementById(config.anchorId);
+      const card = anchor?.closest('.card');
+      const head = card?.querySelector('.card-head');
+      if (!anchor || !card || !head) {
+        return null;
+      }
+
+      card.classList.add('workspace-panel-card', config.themeClass);
+      card.dataset.panelId = config.id;
+
+      const actions = ensureWorkspacePanelActions(head);
+      const toggleButton = document.createElement('button');
+      toggleButton.type = 'button';
+      toggleButton.className = 'panel-toggle-btn';
+      toggleButton.dataset.panelToggle = config.id;
+      toggleButton.innerHTML = '<span class="panel-toggle-label">收起</span><span class="panel-toggle-icon" aria-hidden="true"></span>';
+
+      const body = document.createElement('div');
+      body.className = 'workspace-panel-body';
+      body.id = `workspacePanelBody-${config.id}`;
+
+      [...card.childNodes].forEach((node) => {
+        if (node !== head) {
+          body.appendChild(node);
+        }
+      });
+
+      toggleButton.setAttribute('aria-controls', body.id);
+      actions.appendChild(toggleButton);
+      card.appendChild(body);
+
+      return {
+        id: config.id,
+        card,
+        body,
+        toggleButton
+      };
+    })
+    .filter(Boolean);
+}
+
+function renderWorkspacePanels() {
+  appState.appSettings.collapsedPanels = normalizeCollapsedPanels(appState.appSettings.collapsedPanels);
+
+  (ui.workspacePanels || []).forEach((panel) => {
+    const collapsed = Boolean(appState.appSettings.collapsedPanels[panel.id]);
+    panel.card.classList.toggle('is-collapsed', collapsed);
+    panel.body.hidden = collapsed;
+    panel.toggleButton.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    panel.toggleButton.setAttribute('title', collapsed ? '展开此区域' : '收起此区域');
+
+    const label = panel.toggleButton.querySelector('.panel-toggle-label');
+    if (label) {
+      label.textContent = collapsed ? '展开' : '收起';
+    }
+  });
+}
+
+function toggleWorkspacePanel(panelId) {
+  if (!panelId) {
+    return;
+  }
+
+  appState.appSettings.collapsedPanels = normalizeCollapsedPanels(appState.appSettings.collapsedPanels);
+  appState.appSettings.collapsedPanels[panelId] = !appState.appSettings.collapsedPanels[panelId];
+  appRuntime.setLastCommittedSnapshot(createSnapshot());
+  renderWorkspacePanels();
+  scheduleSave();
+}
+
 function toggleStopwatchWithFeedback() {
   if (stopwatch.running) {
     pauseStopwatch();
@@ -1996,6 +2118,11 @@ function bindEvents() {
   ui.undoBtn.addEventListener('click', undoLastAction);
   ui.redoBtn.addEventListener('click', redoLastAction);
   ui.toggleActionPanelBtn.addEventListener('click', toggleActionPanel);
+  (ui.workspacePanels || []).forEach((panel) => {
+    panel.toggleButton.addEventListener('click', () => {
+      toggleWorkspacePanel(panel.id);
+    });
+  });
   ui.safetyRestoreBtn.addEventListener('click', openSafetyRestoreModal);
   ui.presentationModeBtn.addEventListener('click', enterPresentationMode);
   ui.createBoardBtn.addEventListener('click', openCreateBoardModal);
@@ -2200,6 +2327,7 @@ function renderHeader() {
   ui.actionPanelContent.hidden = Boolean(appState.appSettings.quickActionsCollapsed);
   ui.toggleActionPanelBtn.textContent = appState.appSettings.quickActionsCollapsed ? '显示功能面板' : '隐藏功能面板';
   ui.toggleActionPanelBtn.setAttribute('aria-expanded', appState.appSettings.quickActionsCollapsed ? 'false' : 'true');
+  renderWorkspacePanels();
   ui.quickAdjustValue.value = '1';
   ui.undoBtn.disabled = historyState.undo.length === 0;
   ui.redoBtn.disabled = historyState.redo.length === 0;
@@ -6944,7 +7072,8 @@ function buildSerializableState() {
     boards: appState.boards,
     appSettings: {
       countdownPresetSeconds: Math.floor(countdown.totalMs / 1000),
-      quickActionsCollapsed: Boolean(appState.appSettings.quickActionsCollapsed)
+      quickActionsCollapsed: Boolean(appState.appSettings.quickActionsCollapsed),
+      collapsedPanels: normalizeCollapsedPanels(appState.appSettings.collapsedPanels)
     }
   };
 }

@@ -14,6 +14,7 @@ const WIDGET_EXPANDED_HEIGHT = 360;
 const WIDGET_EDGE_SNAP_THRESHOLD = 26;
 const WIDGET_EDGE_HIDE_VISIBLE_WIDTH = 72;
 const WIDGET_EDGE_HIDE_DELAY_MS = 260;
+const WORKSPACE_PANEL_IDS = ['groups', 'students', 'scoring', 'history', 'ranking', 'overview', 'timers', 'showcase'];
 const MAX_SAFETY_SNAPSHOTS = 12;
 const DEFAULT_PLUS_TEMPLATES = [
   { id: 'plus-speaking', name: '积极发言', value: 2 },
@@ -77,6 +78,21 @@ function createDefaultBoard(name = '新面板 1') {
   };
 }
 
+function createDefaultCollapsedPanels() {
+  return WORKSPACE_PANEL_IDS.reduce((collapsedPanels, panelId) => {
+    collapsedPanels[panelId] = false;
+    return collapsedPanels;
+  }, {});
+}
+
+function normalizeCollapsedPanels(candidate) {
+  const defaults = createDefaultCollapsedPanels();
+  return Object.keys(defaults).reduce((collapsedPanels, panelId) => {
+    collapsedPanels[panelId] = Boolean(candidate?.[panelId]);
+    return collapsedPanels;
+  }, {});
+}
+
 function createDefaultRootState() {
   const board = createDefaultBoard();
   return {
@@ -85,7 +101,8 @@ function createDefaultRootState() {
     boards: [board],
     appSettings: {
       countdownPresetSeconds: 300,
-      quickActionsCollapsed: false
+      quickActionsCollapsed: false,
+      collapsedPanels: createDefaultCollapsedPanels()
     }
   };
 }
@@ -318,7 +335,8 @@ function normalizeRootState(candidate) {
           1,
           Math.min(24 * 60 * 60, Math.floor(Number(candidate?.appSettings?.countdownPresetSeconds) || 300))
         ),
-        quickActionsCollapsed: Boolean(candidate?.appSettings?.quickActionsCollapsed)
+        quickActionsCollapsed: Boolean(candidate?.appSettings?.quickActionsCollapsed),
+        collapsedPanels: normalizeCollapsedPanels(candidate?.appSettings?.collapsedPanels)
       }
     };
   }
@@ -347,7 +365,8 @@ function normalizeRootState(candidate) {
           1,
           Math.min(24 * 60 * 60, Math.floor(Number(candidate?.settings?.countdownPresetSeconds) || 300))
         ),
-        quickActionsCollapsed: false
+        quickActionsCollapsed: false,
+        collapsedPanels: createDefaultCollapsedPanels()
       }
     };
   }
