@@ -1650,6 +1650,7 @@ function cacheElements() {
     quickAdjustLabel: document.getElementById('quickAdjustLabel'),
     quickAdjustValue: document.getElementById('quickAdjustValue'),
     quickAdjustNote: document.getElementById('quickAdjustNote'),
+    quickAdjustSubmitBtn: document.getElementById('quickAdjustSubmitBtn'),
     reasonSuggestions: document.getElementById('reasonSuggestions'),
     clearHistoryBtn: document.getElementById('clearHistoryBtn'),
     historyList: document.getElementById('historyList'),
@@ -1902,6 +1903,11 @@ function renderHeader() {
   ui.groupCountBadge.textContent = `${board.groups.length} 组`;
   ui.manageGroupsBtn.disabled = false;
   ui.checkedCountBadge.textContent = `已勾选 ${checkedStudentIds.size} 人`;
+  if (ui.quickAdjustSubmitBtn) {
+    ui.quickAdjustSubmitBtn.textContent = checkedStudentIds.size > 0
+      ? `应用到已勾选 ${checkedStudentIds.size} 人`
+      : '应用到当前学生';
+  }
   ui.rankingFilterBtn.textContent = getRankingModeLabel();
   ui.actionPanel.classList.toggle('collapsed', Boolean(appState.appSettings.quickActionsCollapsed));
   ui.actionPanelContent.hidden = Boolean(appState.appSettings.quickActionsCollapsed);
@@ -3752,12 +3758,7 @@ function handleRandomCardClick(event) {
   }
 }
 
-function handleTemplateClick(event, kind) {
-  const button = event.target.closest('[data-action="apply-template"]');
-  if (!button) {
-    return;
-  }
-
+function applyScoreTemplate(kind, templateId) {
   const board = getActiveBoard();
   const student = getSelectedStudent();
   if (!board || !student) {
@@ -3765,7 +3766,7 @@ function handleTemplateClick(event, kind) {
     return;
   }
 
-  const template = board.scoreTemplates[kind].find((item) => item.id === button.dataset.templateId);
+  const template = board.scoreTemplates[kind]?.find((item) => item.id === templateId);
   if (!template) {
     return;
   }
@@ -3778,8 +3779,17 @@ function handleTemplateClick(event, kind) {
   commitState(
     targetStudents.length > 1
       ? `已为 ${targetStudents.length} 名已勾选学生应用“${template.name}”。`
-      : `${student.name} 已应用“${template.name}”。`
+      : `${targetStudents[0].name} 已应用“${template.name}”。`
   );
+}
+
+function handleTemplateClick(event, kind) {
+  const button = event.target.closest('[data-action="apply-template"]');
+  if (!button) {
+    return;
+  }
+
+  applyScoreTemplate(kind, button.dataset.templateId || '');
 }
 
 function clearCurrentStudentHistory() {
@@ -6406,11 +6416,16 @@ function renderSelectedStudentCard() {
   const currentGroup = getGroupById(board, student.groupId);
   const currentLeader = currentGroup ? getGroupLeader(board, currentGroup.id) : null;
   const isLeader = isGroupLeader(board, student);
+  const highlightedPlusTemplates = board.scoreTemplates.plus.slice(0, 4);
+  const highlightedMinusTemplates = board.scoreTemplates.minus.slice(0, 4);
   const studentProfileDetails = [
     student.studentNo ? `学号：${student.studentNo}` : '',
     student.seatNo ? `座号：${student.seatNo}` : '',
     student.note ? `备注：${student.note}` : ''
   ].filter(Boolean).join(' · ');
+  const scoreTargetSummary = checkedStudents.length > 0
+    ? `当前会同时作用到已勾选 ${checkedStudents.length} 人`
+    : '当前仅作用到这名学生';
   const groupOptions = [
     '<option value="">未分组</option>',
     ...board.groups.map((group) => `<option value="${group.id}" ${group.id === student.groupId ? 'selected' : ''}>${escapeHtml(group.name)}${group.leaderId ? ` · 组长 ${escapeHtml(getGroupLeader(board, group.id)?.name || '')}` : ''}</option>`),
@@ -6468,10 +6483,55 @@ function renderSelectedStudentCard() {
       </div>
     </div>
 
-    <div class="selected-quick-score-cloud">
-      <span class="selected-quick-score-label">快捷加减分</span>
-      <div class="selected-quick-score-buttons">
-        ${renderQuickScoreButtons()}
+    <div class="score-cockpit">
+      <div class="score-cockpit-head">
+        <div class="score-cockpit-copy">
+          <span class="selected-quick-score-label">课堂打分操作台</span>
+          <strong>${checkedStudents.length > 0 ? '批量打分中' : '单人打分中'}</strong>
+          <small>${scoreTargetSummary}</small>
+        </div>
+        <span class="score-target-pill ${checkedStudents.length > 0 ? 'is-batch' : 'is-single'}">
+          ${checkedStudents.length > 0 ? `目标 ${checkedStudents.length} 人` : '目标 当前学生'}
+        </span>
+      </div>
+
+      <div class="score-cockpit-grid">
+        <section class="score-lane score-lane-plus">
+          <div class="score-lane-head">
+            <span>一键奖励</span>
+            <small>常用正向反馈</small>
+          </div>
+          <div class="score-template-pills">
+            ${highlightedPlusTemplates.map((template) => `
+              <button class="score-template-pill is-plus" type="button" data-action="apply-selected-template" data-kind="plus" data-template-id="${template.id}">
+                <span>${escapeHtml(template.name)}</span>
+                <strong>+${template.value}</strong>
+              </button>
+            `).join('')}
+          </div>
+        </section>
+
+        <section class="score-lane score-lane-minus">
+          <div class="score-lane-head">
+            <span>一键提醒</span>
+            <small>常用课堂纠偏</small>
+          </div>
+          <div class="score-template-pills">
+            ${highlightedMinusTemplates.map((template) => `
+              <button class="score-template-pill is-minus" type="button" data-action="apply-selected-template" data-kind="minus" data-template-id="${template.id}">
+                <span>${escapeHtml(template.name)}</span>
+                <strong>-${template.value}</strong>
+              </button>
+            `).join('')}
+          </div>
+        </section>
+      </div>
+
+      <div class="selected-quick-score-cloud">
+        <span class="selected-quick-score-label">快捷分值</span>
+        <div class="selected-quick-score-buttons">
+          ${renderQuickScoreButtons()}
+        </div>
       </div>
     </div>
 
@@ -6506,6 +6566,11 @@ function handleSelectedStudentCardClick(event) {
   if (action === 'quick-score-delta') {
     const delta = Math.round(Number(actionNode.dataset.delta) || 0);
     applyDirectScoreDelta(delta);
+    return;
+  }
+
+  if (action === 'apply-selected-template') {
+    applyScoreTemplate(actionNode.dataset.kind || 'plus', actionNode.dataset.templateId || '');
     return;
   }
 
